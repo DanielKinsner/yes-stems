@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 .venv-demucs/
+src-tauri/resources/demucs-runtime/*
+!src-tauri/resources/demucs-runtime/.gitkeep
 
 # Rust / Tauri build output
 target
