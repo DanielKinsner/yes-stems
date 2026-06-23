@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 const tauriMocks = vi.hoisted(() => ({
+  convertFileSrc: vi.fn(),
   invoke: vi.fn(),
   listen: vi.fn(),
   open: vi.fn(),
@@ -11,6 +12,7 @@ const tauriMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: tauriMocks.convertFileSrc,
   invoke: tauriMocks.invoke,
 }));
 
@@ -33,10 +35,14 @@ describe("YES Stems app", () => {
 
   beforeEach(() => {
     tauriMocks.invoke.mockReset();
+    tauriMocks.convertFileSrc.mockReset();
+    tauriMocks.convertFileSrc.mockImplementation((path: string) => `asset://localhost/${path}`);
     tauriMocks.open.mockReset();
     tauriMocks.openPath.mockReset();
     tauriMocks.listen.mockReset();
     tauriMocks.listen.mockResolvedValue(() => undefined);
+    vi.unstubAllGlobals();
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 
   it("renders the extraction workspace without scaffold copy", () => {
@@ -157,6 +163,83 @@ describe("YES Stems app", () => {
         outputDir: "C:\\renders",
         mode: "localMlSix",
       },
+    });
+  });
+
+  it("auditions rendered stems through Tauri asset audio", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn();
+    const addEventListener = vi.fn();
+    const AudioMock = vi.fn(function MockAudio(this: HTMLAudioElement) {
+      this.addEventListener = addEventListener;
+      this.currentTime = 0;
+      this.pause = pause;
+      this.play = play;
+    });
+    vi.stubGlobal("Audio", AudioMock);
+
+    tauriMocks.open
+      .mockResolvedValueOnce("C:\\music\\song.wav")
+      .mockResolvedValueOnce("C:\\renders");
+    tauriMocks.invoke
+      .mockResolvedValueOnce({
+        available: true,
+        runner: "demucs.exe",
+        device: "cpu",
+        checked: [],
+        detail: "ready",
+      })
+      .mockResolvedValueOnce({
+        fileName: "song",
+        sampleRate: 44_100,
+        channels: 2,
+        frames: 132_300,
+        durationSeconds: 3,
+        peak: 0.8,
+      })
+      .mockResolvedValueOnce({
+        sourceName: "song",
+        mode: "localMlSix",
+        modeLabel: "Local ML 6 Stems",
+        outputDir: "C:\\renders\\song",
+        sampleRate: 44_100,
+        channels: 2,
+        frames: 132_300,
+        durationSeconds: 3,
+        reconstructionError: -1,
+        methodNotes: ["Local Demucs model inference (htdemucs_6s); no cloud or API calls."],
+        stems: [
+          {
+            name: "Vocals",
+            role: "Demucs vocal stem from local offline model inference.",
+            path: "C:\\renders\\song\\vocals.wav",
+            frames: 132_300,
+            peak: 0.5,
+          },
+        ],
+      });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
+    await screen.findByText("song");
+    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
+
+    const playButton = await screen.findByRole("button", { name: "Play Vocals" });
+    fireEvent.click(playButton);
+
+    await waitFor(() => {
+      expect(tauriMocks.convertFileSrc).toHaveBeenCalledWith("C:\\renders\\song\\vocals.wav");
+      expect(play).toHaveBeenCalled();
     });
   });
 });

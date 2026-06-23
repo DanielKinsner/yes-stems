@@ -856,9 +856,27 @@ p {
   font-style: normal;
 }
 
-.row-menu {
+.stem-play-button {
   width: 26px;
   height: 26px;
+}
+
+.stem-play-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.audition-error {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  color: #ffd59d;
+  border: 1px solid rgba(215, 162, 87, 0.42);
+  border-radius: 5px;
+  background: rgba(120, 66, 18, 0.22);
+  font-size: 11px;
+  line-height: 14px;
 }
 
 .result-actions {

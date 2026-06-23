@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -18,7 +18,6 @@ import {
   HardDrive,
   Layers3,
   Mic2,
-  MoreVertical,
   Music2,
   Pause,
   Play,
@@ -135,6 +134,9 @@ function App() {
   });
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState("");
+  const [auditionPath, setAuditionPath] = useState("");
+  const [auditionError, setAuditionError] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -147,6 +149,18 @@ function App() {
 
     return () => {
       void unlisten.then((dispose) => dispose());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!report) {
+      stopAudition();
+    }
+  }, [report]);
+
+  useEffect(() => {
+    return () => {
+      stopAudition(false);
     };
   }, []);
 
@@ -195,7 +209,8 @@ function App() {
         fileName: fileNameFromPath(stem.path),
         role: stem.role,
         peak: `${dbfs(stem.peak)} dBFS`,
-        status: "Ready",
+        status: auditionPath === stem.path ? "Playing" : "Ready",
+        path: stem.path,
       }))
     : selectedMode.stems.map((stem) => ({
         key: stem,
@@ -204,6 +219,7 @@ function App() {
         role: stemRole(stem),
         peak: "-- dB",
         status: "Pending",
+        path: "",
       }));
 
   const resultStats = useMemo(() => {
@@ -349,6 +365,53 @@ function App() {
 
     if (outputDir) {
       await openPath(outputDir);
+    }
+  }
+
+  function stopAudition(updateState = true) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+
+    if (updateState) {
+      setAuditionPath("");
+    }
+  }
+
+  async function toggleAudition(stem: { name: string; path: string }) {
+    if (!stem.path || !hasTauriRuntime()) {
+      return;
+    }
+
+    if (auditionPath === stem.path) {
+      stopAudition();
+      return;
+    }
+
+    stopAudition();
+    setAuditionError("");
+
+    const audio = new Audio(convertFileSrc(stem.path));
+    audioRef.current = audio;
+    audio.addEventListener("ended", () => {
+      setAuditionPath("");
+      audioRef.current = null;
+    });
+    audio.addEventListener("error", () => {
+      setAuditionError(`Could not play ${stem.name}. Open the output folder and try the WAV directly.`);
+      setAuditionPath("");
+      audioRef.current = null;
+    });
+
+    try {
+      setAuditionPath(stem.path);
+      await audio.play();
+    } catch (caught) {
+      setAuditionError(errorMessage(caught));
+      setAuditionPath("");
+      audioRef.current = null;
     }
   }
 
@@ -557,8 +620,8 @@ function App() {
             </div>
 
             <div className="result-stats">
-              {resultStats.map((stat) => (
-                <span key={stat}>{stat}</span>
+              {resultStats.map((stat, index) => (
+                <span key={`${stat}-${index}`}>{stat}</span>
               ))}
             </div>
 
@@ -576,12 +639,26 @@ function App() {
                     <b>{stem.peak}</b>
                     <em>{stem.status}</em>
                   </div>
-                  <button className="icon-button row-menu" type="button" aria-label={`More options for ${stem.name}`}>
-                    <MoreVertical size={15} />
+                  <button
+                    className="icon-button stem-play-button"
+                    type="button"
+                    aria-label={`${auditionPath === stem.path ? "Pause" : "Play"} ${stem.name}`}
+                    disabled={!stem.path || !hasTauriRuntime()}
+                    onClick={() => {
+                      void toggleAudition(stem);
+                    }}
+                  >
+                    {auditionPath === stem.path ? <Pause size={15} /> : <Play size={15} fill="currentColor" />}
                   </button>
                 </article>
               ))}
             </div>
+
+            {auditionError ? (
+              <div className="audition-error" role="alert">
+                {auditionError}
+              </div>
+            ) : null}
 
             <div className="result-actions">
               <button className="secondary-action" type="button" disabled={!report}>
