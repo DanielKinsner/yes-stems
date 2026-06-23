@@ -85,9 +85,12 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Classic DSP Layers/i }));
 
+    expect(screen.getByText("vocal_foreground.wav")).toBeInTheDocument();
+    expect(screen.getByText("instrumental_sum.wav")).toBeInTheDocument();
     expect(screen.getByText("drums_percussion.wav")).toBeInTheDocument();
     expect(screen.getByText("bass_band.wav")).toBeInTheDocument();
     expect(screen.getByText("harmonic_bed.wav")).toBeInTheDocument();
+    expect(screen.getByText("residual.wav")).toBeInTheDocument();
   });
 
   it("runs extraction through Tauri commands and renders the report", async () => {
