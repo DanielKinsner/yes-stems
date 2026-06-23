@@ -243,6 +243,7 @@ function App() {
     } else if (report) {
       lines.push(`00:00:04 Complete: wrote ${report.stems.length} stems`);
       lines.push(`00:00:05 Output: ${report.outputDir}`);
+      // Keep completion notes visible without turning the console into a report viewer.
       for (const note of report.methodNotes.slice(0, 3)) {
         lines.push(`00:00:06 Note: ${note}`);
       }
