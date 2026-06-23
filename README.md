@@ -29,6 +29,7 @@ Then in a second shell:
 
 ```powershell
 npm run screenshot:ui
+npm run verify:screenshot
 ```
 
 ## Local Demucs Runtime
