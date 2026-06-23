@@ -68,6 +68,14 @@ impl SeparationTuning {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ExportStemsRequest {
+    pub source_name: String,
+    pub destination_root: String,
+    pub stems: Vec<StemFile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackAnalysis {
     pub file_name: String,
     pub sample_rate: u32,
@@ -120,4 +128,11 @@ pub struct ExtractionReport {
     pub stems: Vec<StemFile>,
     pub method_notes: Vec<String>,
     pub reconstruction_error: f32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportStemsResult {
+    pub export_dir: String,
+    pub exported_files: usize,
 }

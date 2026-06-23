@@ -76,6 +76,11 @@ type ExtractionReport = {
   reconstructionError: number;
 };
 
+type ExportStemsResult = {
+  exportDir: string;
+  exportedFiles: number;
+};
+
 const modeDetails: Record<
   StemMode,
   {
@@ -135,11 +140,14 @@ function App() {
     detail: "Ready",
   });
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState("");
   const [auditionPath, setAuditionPath] = useState("");
   const [auditionError, setAuditionError] = useState("");
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const [timelineSelection, setTimelineSelection] = useState({ start: 0, end: 0 });
+  const [exportError, setExportError] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playAllTokenRef = useRef(0);
   const selectionAnchorRef = useRef(0);
@@ -304,6 +312,8 @@ function App() {
     }
 
     setError("");
+    setExportError("");
+    setExportMessage("");
     const selected = await open({
       multiple: false,
       directory: false,
@@ -342,6 +352,8 @@ function App() {
     }
 
     setError("");
+    setExportError("");
+    setExportMessage("");
     const selected = await open({
       multiple: false,
       directory: true,
@@ -374,6 +386,8 @@ function App() {
     setIsExtracting(true);
     setReport(null);
     setError("");
+    setExportError("");
+    setExportMessage("");
     setProgress({ phase: "queued", progress: 0.02, detail: "Starting extraction" });
 
     try {
@@ -406,6 +420,41 @@ function App() {
 
     if (outputDir) {
       await openPath(outputDir);
+    }
+  }
+
+  async function exportAll() {
+    if (!report || !hasTauriRuntime() || isExporting) {
+      return;
+    }
+
+    setError("");
+    setExportError("");
+    setExportMessage("");
+    const selected = await open({
+      multiple: false,
+      directory: true,
+    });
+
+    if (typeof selected !== "string") {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const result = await invoke<ExportStemsResult>("export_stems", {
+        request: {
+          sourceName: report.sourceName,
+          destinationRoot: selected,
+          stems: report.stems,
+        },
+      });
+      setExportMessage(`Exported ${result.exportedFiles} files to ${result.exportDir}`);
+      await openPath(result.exportDir);
+    } catch (caught) {
+      setExportError(errorMessage(caught));
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -872,6 +921,13 @@ function App() {
               </div>
             ) : null}
 
+            {exportMessage ? <div className="export-status">{exportMessage}</div> : null}
+            {exportError ? (
+              <div className="audition-error" role="alert">
+                {exportError}
+              </div>
+            ) : null}
+
             <div className="result-actions">
               <button
                 className="secondary-action"
@@ -888,9 +944,14 @@ function App() {
                 <FolderOpen size={16} />
                 <span>Open Output</span>
               </button>
-              <button className="export-action" type="button" onClick={revealOutput} disabled={!report}>
+              <button
+                className="export-action"
+                type="button"
+                disabled={!report || isExporting || !hasTauriRuntime()}
+                onClick={exportAll}
+              >
                 <FolderOutput size={16} />
-                <span>Show Files</span>
+                <span>{isExporting ? "Exporting" : "Export All"}</span>
               </button>
             </div>
           </section>

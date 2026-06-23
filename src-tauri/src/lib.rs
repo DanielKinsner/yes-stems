@@ -14,7 +14,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::analyze_track,
             commands::check_local_ml_runtime,
-            commands::extract_stems
+            commands::extract_stems,
+            commands::export_stems
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

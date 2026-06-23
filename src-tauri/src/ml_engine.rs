@@ -1,7 +1,7 @@
 use std::{
     env,
     ffi::OsString,
-    fs,
+    fs, io,
     path::{Path, PathBuf},
     process::{Command, Output},
     time::{SystemTime, UNIX_EPOCH},
@@ -20,6 +20,8 @@ pub enum MlEngineError {
     Audio(#[from] AudioIoError),
     #[error("could not prepare local ML output directory: {0}")]
     OutputDirectory(std::io::Error),
+    #[error("could not prepare local ML input for Demucs: {0}")]
+    DemucsInput(std::io::Error),
     #[error(
         "local ML extraction requires Demucs. Tried {0}. Install the bundled runtime, use the repo-local .venv-demucs runtime, install Demucs on PATH, run through python -m demucs, or set YES_STEMS_DEMUCS to an executable path."
     )]
@@ -60,6 +62,19 @@ struct DemucsRunner {
     label: String,
 }
 
+#[derive(Debug)]
+struct DemucsWorkspace {
+    root: PathBuf,
+    input_path: PathBuf,
+    output_dir: PathBuf,
+}
+
+impl Drop for DemucsWorkspace {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
 pub fn extract_track_to_directory<F>(
     input_path: &Path,
     output_root: &Path,
@@ -79,15 +94,19 @@ where
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
     fs::create_dir_all(&output_dir).map_err(MlEngineError::OutputDirectory)?;
 
-    let work_dir = output_dir.join(format!("_demucs-{}", timestamp_millis()));
-    fs::create_dir_all(&work_dir).map_err(MlEngineError::OutputDirectory)?;
+    let demucs_workspace = prepare_demucs_workspace(input_path)?;
 
     progress(
         "ml-ready",
         0.08,
         format!("starting local Demucs model {model}"),
     );
-    let output = run_demucs(model, input_path, &work_dir, resource_dir.as_deref())?;
+    let output = run_demucs(
+        model,
+        &demucs_workspace.input_path,
+        &demucs_workspace.output_dir,
+        resource_dir.as_deref(),
+    )?;
     if !output.status.success() {
         return Err(MlEngineError::RuntimeFailed {
             runner: output.runner,
@@ -100,13 +119,14 @@ where
     progress("export", 0.72, "collecting local ML stem files".to_string());
     let mut stem_files = Vec::with_capacity(stems.len());
     for stem in stems {
-        let source = find_file_named(&work_dir, stem.filename).ok_or_else(|| {
-            MlEngineError::MissingStem {
-                stem: stem.name,
-                filename: stem.filename,
-                root: work_dir.to_string_lossy().to_string(),
-            }
-        })?;
+        let source =
+            find_file_named(&demucs_workspace.output_dir, stem.filename).ok_or_else(|| {
+                MlEngineError::MissingStem {
+                    stem: stem.name,
+                    filename: stem.filename,
+                    root: demucs_workspace.output_dir.to_string_lossy().to_string(),
+                }
+            })?;
         let target = output_dir.join(stem.filename);
         fs::copy(&source, &target).map_err(MlEngineError::CopyStem)?;
         let audio = audio_io::decode_audio(&target)?;
@@ -118,8 +138,6 @@ where
             peak: audio.peak(),
         });
     }
-
-    let _ = fs::remove_dir_all(&work_dir);
 
     progress(
         "complete",
@@ -139,6 +157,72 @@ where
         method_notes: method_notes(mode, model),
         reconstruction_error: -1.0,
     })
+}
+
+fn prepare_demucs_workspace(input_path: &Path) -> Result<DemucsWorkspace, MlEngineError> {
+    let root = create_demucs_workspace_root()?;
+    let input_dir = root.join("input");
+    let output_dir = root.join("out");
+    let result = (|| {
+        fs::create_dir_all(&input_dir).map_err(MlEngineError::OutputDirectory)?;
+        fs::create_dir_all(&output_dir).map_err(MlEngineError::OutputDirectory)?;
+        let demucs_input_path = input_dir.join(demucs_input_filename(input_path));
+        fs::copy(input_path, &demucs_input_path).map_err(MlEngineError::DemucsInput)?;
+        Ok(DemucsWorkspace {
+            root: root.clone(),
+            input_path: demucs_input_path,
+            output_dir,
+        })
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    result
+}
+
+fn create_demucs_workspace_root() -> Result<PathBuf, MlEngineError> {
+    let base = env::temp_dir();
+    for attempt in 0..1000 {
+        let candidate = base.join(format!(
+            "yes-stems-demucs-{}-{}-{attempt}",
+            std::process::id(),
+            timestamp_millis()
+        ));
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(MlEngineError::OutputDirectory(error)),
+        }
+    }
+
+    Err(MlEngineError::OutputDirectory(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not create unique Demucs workspace",
+    )))
+}
+
+fn demucs_input_filename(input_path: &Path) -> String {
+    let extension = input_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(ascii_alphanumeric_prefix)
+        .unwrap_or_default();
+
+    if extension.is_empty() {
+        "source".to_string()
+    } else {
+        format!("source.{extension}")
+    }
+}
+
+fn ascii_alphanumeric_prefix(value: &str) -> String {
+    value
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(16)
+        .collect()
 }
 
 pub fn check_runtime(resource_dir: Option<PathBuf>) -> LocalMlStatus {
@@ -531,5 +615,28 @@ mod tests {
                     .contains(&(OsString::from("PYTHONIOENCODING"), OsString::from("utf-8")))
             );
         }
+    }
+
+    #[test]
+    fn demucs_workspace_hides_non_ascii_source_names_from_runner() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let input_path = temp_dir.path().join("song\u{ff02}title.wav");
+        fs::write(&input_path, b"fake audio bytes").expect("input");
+
+        let workspace = prepare_demucs_workspace(&input_path).expect("workspace");
+
+        assert_eq!(
+            workspace
+                .input_path
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("source.wav")
+        );
+        assert!(!workspace.input_path.to_string_lossy().contains('\u{ff02}'));
+        assert!(!workspace.output_dir.to_string_lossy().contains('\u{ff02}'));
+        assert_eq!(
+            fs::read(&workspace.input_path).expect("copied input"),
+            b"fake audio bytes"
+        );
     }
 }
