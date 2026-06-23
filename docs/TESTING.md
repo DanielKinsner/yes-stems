@@ -54,6 +54,24 @@ This finds the installed app through the Windows uninstall registry, runs the
 installed bundled Demucs runtime against a generated synthetic WAV, and verifies
 the expected 4-stem and 6-stem files.
 
+## UI Screenshot Lane
+
+Run from the repo root after frontend changes:
+
+```powershell
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
+```
+
+In a second shell, capture the current desktop viewport:
+
+```powershell
+npm run screenshot:ui
+```
+
+The capture script uses local Chrome or Edge at `1280x800` and updates
+`docs/screenshots/yes-stems-installed-app.png`.
+
 ## Backend Coverage
 
 Rust tests should cover:
