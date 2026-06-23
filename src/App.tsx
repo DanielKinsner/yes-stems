@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -37,6 +37,7 @@ type TrackAnalysis = {
   frames: number;
   durationSeconds: number;
   peak: number;
+  waveformPeaks: number[];
 };
 
 type LocalMlStatus = {
@@ -114,16 +115,17 @@ const modeDetails: Record<
 
 const waveformBars = Array.from({ length: 96 }, (_, index) => {
   const tone = Math.sin(index * 0.43) * 0.5 + Math.sin(index * 0.11 + 1.4) * 0.35;
-  return 24 + Math.round(Math.abs(tone) * 74);
+  return 0.12 + Math.abs(tone) * 0.52;
 });
 
-const timeTicks = ["0:00", "1:20", "2:40", "4:00", "5:20"];
 const frequencyTicks = ["20k", "10k", "5k", "2k", "1k", "500", "100", "20"];
 
 function App() {
   const [inputPath, setInputPath] = useState("");
   const [outputDir, setOutputDir] = useState("");
   const [mode, setMode] = useState<StemMode>("localMlSix");
+  const [aggressiveness, setAggressiveness] = useState(5);
+  const [artifactReduction, setArtifactReduction] = useState(5);
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(null);
   const [localMlStatus, setLocalMlStatus] = useState<LocalMlStatus | null>(null);
   const [report, setReport] = useState<ExtractionReport | null>(null);
@@ -136,7 +138,11 @@ function App() {
   const [error, setError] = useState("");
   const [auditionPath, setAuditionPath] = useState("");
   const [auditionError, setAuditionError] = useState("");
+  const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const [timelineSelection, setTimelineSelection] = useState({ start: 0, end: 0 });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playAllTokenRef = useRef(0);
+  const selectionAnchorRef = useRef(0);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -202,6 +208,15 @@ function App() {
   const currentFileName = analysis?.fileName ?? (inputPath ? fileNameFromPath(inputPath) : "No source loaded");
   const sampleRate = analysis ? `${analysis.sampleRate.toLocaleString()} Hz` : "--";
   const channelLabel = analysis ? `${analysis.channels} ch` : "--";
+  const waveformLevels = useMemo(() => waveformLevelsForAnalysis(analysis), [analysis]);
+  const selectionStart = Math.min(timelineSelection.start, timelineSelection.end);
+  const selectionEnd = Math.max(timelineSelection.start, timelineSelection.end);
+  const selectedSeconds = analysis ? selectionStart * analysis.durationSeconds : 0;
+  const selectionText = analysis
+    ? `${formatPreciseTime(selectionStart * analysis.durationSeconds)} - ${formatPreciseTime(
+        selectionEnd * analysis.durationSeconds,
+      )}`
+    : "No source selected";
   const stemRows = report
     ? report.stems.map((stem) => ({
         key: stem.path,
@@ -284,6 +299,10 @@ function App() {
   ]);
 
   async function chooseInput() {
+    if (isExtracting) {
+      return;
+    }
+
     setError("");
     const selected = await open({
       multiple: false,
@@ -300,8 +319,8 @@ function App() {
       return;
     }
 
+    resetExtractionState();
     setInputPath(selected);
-    setReport(null);
     setProgress({ phase: "analyze", progress: 0.08, detail: "Reading source metadata" });
 
     try {
@@ -318,6 +337,10 @@ function App() {
   }
 
   async function chooseOutput() {
+    if (isExtracting) {
+      return;
+    }
+
     setError("");
     const selected = await open({
       multiple: false,
@@ -325,8 +348,22 @@ function App() {
     });
 
     if (typeof selected === "string") {
+      setReport(null);
+      stopAudition();
       setOutputDir(selected);
+      setProgress((current) =>
+        current.phase === "complete" ? { phase: "ready", progress: 0, detail: "Output folder changed" } : current,
+      );
     }
+  }
+
+  function resetExtractionState() {
+    stopAudition();
+    setReport(null);
+    setAnalysis(null);
+    setAuditionError("");
+    setTimelineSelection({ start: 0, end: 0 });
+    setProgress({ phase: "idle", progress: 0, detail: "Ready" });
   }
 
   async function runExtraction() {
@@ -345,6 +382,10 @@ function App() {
           inputPath,
           outputDir,
           mode,
+          tuning: {
+            aggressiveness,
+            artifactReduction,
+          },
         },
       });
       setReport(nextReport);
@@ -369,6 +410,10 @@ function App() {
   }
 
   function stopAudition(updateState = true) {
+    playAllTokenRef.current += 1;
+    if (updateState) {
+      setIsPlayingAll(false);
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -378,6 +423,19 @@ function App() {
     if (updateState) {
       setAuditionPath("");
     }
+  }
+
+  function handleModeChange(nextMode: StemMode) {
+    if (isExtracting || nextMode === mode) {
+      return;
+    }
+
+    setMode(nextMode);
+    setReport(null);
+    stopAudition();
+    setProgress((current) =>
+      current.phase === "complete" ? { phase: "ready", progress: 0, detail: "Mode changed" } : current,
+    );
   }
 
   async function toggleAudition(stem: { name: string; path: string }) {
@@ -415,6 +473,97 @@ function App() {
     }
   }
 
+  async function togglePlayAll() {
+    if (!report || !hasTauriRuntime()) {
+      return;
+    }
+
+    if (isPlayingAll) {
+      stopAudition();
+      return;
+    }
+
+    const token = playAllTokenRef.current + 1;
+    playAllTokenRef.current = token;
+    setIsPlayingAll(true);
+    setAuditionError("");
+    await playStemInSequence(report.stems, 0, token);
+  }
+
+  async function playStemInSequence(stems: StemFile[], index: number, token: number) {
+    if (playAllTokenRef.current !== token) {
+      return;
+    }
+
+    if (index >= stems.length) {
+      setIsPlayingAll(false);
+      setAuditionPath("");
+      audioRef.current = null;
+      return;
+    }
+
+    const stem = stems[index];
+    const audio = new Audio(convertFileSrc(stem.path));
+    audioRef.current = audio;
+    setAuditionPath(stem.path);
+    audio.addEventListener("ended", () => {
+      void playStemInSequence(stems, index + 1, token);
+    });
+    audio.addEventListener("error", () => {
+      setAuditionError(`Could not play ${stem.name}. Open the output folder and try the WAV directly.`);
+      setIsPlayingAll(false);
+      setAuditionPath("");
+      audioRef.current = null;
+    });
+
+    try {
+      await audio.play();
+    } catch (caught) {
+      setAuditionError(errorMessage(caught));
+      setIsPlayingAll(false);
+      setAuditionPath("");
+      audioRef.current = null;
+    }
+  }
+
+  function handleTimelinePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!analysis) {
+      return;
+    }
+
+    const value = timelineRatioFromEvent(event);
+    selectionAnchorRef.current = value;
+    setTimelineSelection({ start: value, end: value });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleTimelinePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!analysis || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+
+    setTimelineSelection({
+      start: selectionAnchorRef.current,
+      end: timelineRatioFromEvent(event),
+    });
+  }
+
+  function handleTimelinePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!analysis || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setTimelineSelection((current) => {
+      if (Math.abs(current.start - current.end) < 0.01) {
+        const point = timelineRatioFromEvent(event);
+        return { start: point, end: point };
+      }
+
+      return current;
+    });
+  }
+
   return (
     <main className="app-shell">
       <header className="app-chrome">
@@ -437,7 +586,13 @@ function App() {
             {progress.phase === "complete" ? <CheckCircle2 size={15} /> : <Activity size={15} />}
             <span>{progress.detail}</span>
           </div>
-          <button className="icon-button" type="button" aria-label="Settings">
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Settings unavailable"
+            title="Settings are not available in this build."
+            disabled
+          >
             <Settings size={16} />
           </button>
         </div>
@@ -454,22 +609,22 @@ function App() {
                 <span>{analysis ? `WAV  -  ${sampleRate}  -  ${channelLabel}` : "Drop in WAV, FLAC, MP3, AIFF, M4A, or OGG"}</span>
               </div>
             </div>
-            <button className="field-button" type="button" onClick={chooseInput}>
+            <button className="field-button" type="button" onClick={chooseInput} disabled={isExtracting}>
               <FolderOpen size={16} />
-              <span>{inputPath ? compactPath(inputPath) : "Select track"}</span>
+              <span>{inputPath ? `Replace track: ${compactPath(inputPath)}` : "Select track"}</span>
             </button>
           </section>
 
           <section className="module output-module">
             <SectionHeading step="2" title="Output" />
-            <button className="path-field" type="button" onClick={chooseOutput}>
+            <button className="path-field" type="button" onClick={chooseOutput} disabled={isExtracting}>
               <span>{outputDir ? compactPath(outputDir) : "Choose output folder"}</span>
               <FolderOutput size={16} />
             </button>
             <div className="file-naming-row">
               <span>File naming</span>
-              <button type="button">
-                Track Name
+              <button type="button" title="Exports currently use the source track name." disabled>
+                Source Name
                 <ChevronDown size={14} />
               </button>
             </div>
@@ -486,7 +641,8 @@ function App() {
                   role="tab"
                   aria-selected={mode === modeKey}
                   className={mode === modeKey ? "selected" : ""}
-                  onClick={() => setMode(modeKey)}
+                  disabled={isExtracting}
+                  onClick={() => handleModeChange(modeKey)}
                 >
                   <ModeIcon mode={modeKey} />
                   <span>
@@ -503,13 +659,34 @@ function App() {
             <SectionHeading title="Advanced" />
             <label className="select-row">
               <span>Algorithm</span>
-              <button type="button">
+              <button
+                type="button"
+                title="The selected mode determines the extraction algorithm."
+                disabled
+              >
                 {localMode ? "Hybrid v2" : "Classic DSP"}
                 <ChevronDown size={14} />
               </button>
             </label>
-            <SliderRow label="Aggressiveness" value="5" />
-            <SliderRow label="Artifact Reduction" value="5" />
+            <SliderRow
+              label="Aggressiveness"
+              value={aggressiveness}
+              disabled={localMode || isExtracting}
+              disabledReason="Only classic DSP modes use this control."
+              onChange={setAggressiveness}
+            />
+            <SliderRow
+              label="Artifact Reduction"
+              value={artifactReduction}
+              disabled={localMode || isExtracting}
+              disabledReason="Only classic DSP modes use this control."
+              onChange={setArtifactReduction}
+            />
+            <p className="control-note">
+              {localMode
+                ? "Local ML uses fixed Demucs model settings; DSP tuning is unavailable."
+                : "DSP tuning changes mask strength and smoothing for the next extraction."}
+            </p>
           </section>
         </aside>
 
@@ -524,26 +701,51 @@ function App() {
               </div>
             </div>
 
-            <div className="wave-overview" aria-label="Waveform overview">
+            <div
+              className={`wave-overview ${analysis ? "interactive" : ""}`}
+              aria-label="Audio overview selection"
+              onPointerDown={handleTimelinePointerDown}
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={handleTimelinePointerUp}
+            >
               <div className="wave-bars" aria-hidden="true">
-                {waveformBars.map((height, index) => (
+                {waveformLevels.map((height, index) => (
                   <span
-                    key={`${height}-${index}`}
+                    key={`${index}-${height}`}
                     style={{
-                      height: `${height}%`,
-                      opacity: inputPath ? 0.46 + (height / 100) * 0.42 : 0.18,
+                      height: `${Math.max(7, Math.round(height * 100))}%`,
+                      opacity: analysis ? 0.48 + height * 0.42 : 0.18,
                     }}
                   />
                 ))}
               </div>
-              <div className="playhead" aria-hidden="true" />
+              {analysis ? (
+                <>
+                  <div
+                    className="selection-range"
+                    style={{
+                      left: `${selectionStart * 100}%`,
+                      width: `${Math.max(0.4, (selectionEnd - selectionStart) * 100)}%`,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <div className="playhead" style={{ left: `${selectionStart * 100}%` }} aria-hidden="true" />
+                </>
+              ) : (
+                <div className="overview-empty">Select a track to render an audio-derived overview.</div>
+              )}
             </div>
 
-            <div className="time-axis" aria-hidden="true">
-              {timeTicks.map((tick) => (
-                <span key={tick}>{tick}</span>
+            <div className="time-axis">
+              {timeTicksForAnalysis(analysis).map((tick, index) => (
+                <span key={`${tick}-${index}`}>{tick}</span>
               ))}
-              <span>{duration === "--:--" ? "6:35" : duration}</span>
+              <span>{duration}</span>
+            </div>
+            <div className="selection-readout">
+              <span>Selection</span>
+              <b>{selectionText}</b>
+              <span>Cursor {formatPreciseTime(selectedSeconds)}</span>
             </div>
 
             <div className="spectrogram-grid">
@@ -562,7 +764,12 @@ function App() {
           <section className="module processing-module">
             <div className="module-bar">
               <SectionHeading step="5" title="Processing" />
-              <button className="small-button" type="button" disabled={!isExtracting}>
+              <button
+                className="small-button"
+                type="button"
+                title="Cancel is unavailable until extraction runs on a cancellable worker."
+                disabled
+              >
                 Cancel
               </button>
             </div>
@@ -592,11 +799,21 @@ function App() {
             )}
 
             <div className="transport-actions">
-              <button className="secondary-action" type="button" disabled={!isExtracting}>
+              <button
+                className="secondary-action"
+                type="button"
+                title="Pause is unavailable until extraction runs on a pausable worker."
+                disabled
+              >
                 <Pause size={16} />
                 <span>Pause</span>
               </button>
-              <button className="secondary-action" type="button" disabled={!isExtracting}>
+              <button
+                className="secondary-action"
+                type="button"
+                title="Cancel is unavailable until extraction runs on a cancellable worker."
+                disabled
+              >
                 <Square size={15} />
                 <span>Cancel</span>
               </button>
@@ -661,17 +878,24 @@ function App() {
             ) : null}
 
             <div className="result-actions">
-              <button className="secondary-action" type="button" disabled={!report}>
-                <Play size={16} fill="currentColor" />
-                <span>Play All</span>
+              <button
+                className="secondary-action"
+                type="button"
+                disabled={!report || !hasTauriRuntime()}
+                onClick={() => {
+                  void togglePlayAll();
+                }}
+              >
+                {isPlayingAll ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
+                <span>{isPlayingAll ? "Stop All" : "Play All"}</span>
               </button>
               <button className="secondary-action" type="button" onClick={revealOutput} disabled={!outputDir && !report}>
                 <FolderOpen size={16} />
                 <span>Open Output</span>
               </button>
-              <button className="export-action" type="button" disabled={!report}>
+              <button className="export-action" type="button" onClick={revealOutput} disabled={!report}>
                 <FolderOutput size={16} />
-                <span>Export All</span>
+                <span>Show Files</span>
               </button>
             </div>
           </section>
@@ -701,12 +925,33 @@ function SectionHeading({ step, title }: { step?: string; title: string }) {
   );
 }
 
-function SliderRow({ label, value }: { label: string; value: string }) {
+function SliderRow({
+  label,
+  value,
+  disabled,
+  disabledReason,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  disabledReason: string;
+  onChange: (value: number) => void;
+}) {
   return (
     <label className="slider-row">
       <span>{label}</span>
       <div>
-        <i aria-hidden="true" />
+        <input
+          type="range"
+          min="0"
+          max="10"
+          value={value}
+          disabled={disabled}
+          title={disabled ? disabledReason : `${label}: ${value}`}
+          onChange={(event) => onChange(Number(event.currentTarget.value))}
+          style={{ ["--slider-value" as string]: `${value * 10}%` }}
+        />
         <output>{value}</output>
       </div>
     </label>
@@ -844,6 +1089,41 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const remaining = totalSeconds % 60;
   return `${minutes}:${String(remaining).padStart(2, "0")}`;
+}
+
+function formatPreciseTime(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remaining = safeSeconds - minutes * 60;
+  return `${minutes}:${remaining.toFixed(2).padStart(5, "0")}`;
+}
+
+function waveformLevelsForAnalysis(analysis: TrackAnalysis | null) {
+  if (!analysis?.waveformPeaks?.length) {
+    return waveformBars;
+  }
+
+  const peak = Math.max(...analysis.waveformPeaks, 0.01);
+  return analysis.waveformPeaks.map((value) => 0.08 + (value / peak) * 0.88);
+}
+
+function timeTicksForAnalysis(analysis: TrackAnalysis | null) {
+  if (!analysis) {
+    return ["0:00", "--:--", "--:--", "--:--", "--:--"];
+  }
+
+  return [0, 0.2, 0.4, 0.6, 0.8].map((ratio) =>
+    formatDuration(analysis.durationSeconds * ratio),
+  );
+}
+
+function timelineRatioFromEvent(event: ReactPointerEvent<HTMLDivElement>) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  if (rect.width <= 0) {
+    return 0;
+  }
+
+  return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
 }
 
 function dbfs(value: number) {
