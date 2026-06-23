@@ -47,10 +47,22 @@ describe("YES Stems app", () => {
     expect(screen.queryByText(/Welcome to Tauri/i)).not.toBeInTheDocument();
   });
 
-  it("switches to full-band layer expectations", () => {
+  it("defaults to local ML six-stem expectations", () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Full Band Layers/i }));
+    expect(screen.getByRole("tab", { name: /Local ML 6 Stems/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("guitar.wav")).toBeInTheDocument();
+    expect(screen.getByText("piano.wav")).toBeInTheDocument();
+    expect(screen.getByText("other.wav")).toBeInTheDocument();
+  });
+
+  it("keeps classic DSP layer mode available", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("tab", { name: /Classic DSP Layers/i }));
 
     expect(screen.getByText("drums_percussion.wav")).toBeInTheDocument();
     expect(screen.getByText("bass_band.wav")).toBeInTheDocument();
@@ -72,27 +84,27 @@ describe("YES Stems app", () => {
       })
       .mockResolvedValueOnce({
         sourceName: "song",
-        mode: "vocalInstrumental",
-        modeLabel: "Vocal + Instrumental",
+        mode: "localMlSix",
+        modeLabel: "Local ML 6 Stems",
         outputDir: "C:\\renders\\song",
         sampleRate: 44_100,
         channels: 2,
         frames: 132_300,
         durationSeconds: 3,
-        reconstructionError: 0.012,
-        methodNotes: ["Local non-AI extraction; no model inference or cloud processing."],
+        reconstructionError: -1,
+        methodNotes: ["Local Demucs model inference (htdemucs_6s); no cloud or API calls."],
         stems: [
           {
             name: "Vocals",
-            role: "Non-repeating midrange foreground estimate.",
+            role: "Demucs vocal stem from local offline model inference.",
             path: "C:\\renders\\song\\vocals.wav",
             frames: 132_300,
             peak: 0.5,
           },
           {
-            name: "Instrumental",
-            role: "Complement of the vocal foreground mask.",
-            path: "C:\\renders\\song\\instrumental.wav",
+            name: "Guitar",
+            role: "Experimental Demucs guitar stem.",
+            path: "C:\\renders\\song\\guitar.wav",
             frames: 132_300,
             peak: 0.7,
           },
@@ -112,12 +124,13 @@ describe("YES Stems app", () => {
     fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
 
     await screen.findByRole("heading", { name: "Vocals" });
-    expect(screen.getByRole("heading", { name: "Instrumental" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Guitar" })).toBeInTheDocument();
+    expect(screen.getByText("local ML output")).toBeInTheDocument();
     expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
       request: {
         inputPath: "C:\\music\\song.wav",
         outputDir: "C:\\renders",
-        mode: "vocalInstrumental",
+        mode: "localMlSix",
       },
     });
   });

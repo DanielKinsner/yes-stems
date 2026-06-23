@@ -7,6 +7,7 @@ import {
   Activity,
   AlertTriangle,
   AudioWaveform,
+  BrainCircuit,
   CheckCircle2,
   Drum,
   FolderOpen,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-type StemMode = "vocalInstrumental" | "fullBand";
+type StemMode = "localMlSix" | "localMlFour" | "vocalInstrumental" | "fullBand";
 
 type TrackAnalysis = {
   fileName: string;
@@ -66,13 +67,23 @@ const modeDetails: Record<
     stems: string[];
   }
 > = {
+  localMlSix: {
+    label: "Local ML 6 Stems",
+    short: "Demucs htdemucs_6s: vocals, drums, bass, guitar, piano, other.",
+    stems: ["vocals.wav", "drums.wav", "bass.wav", "guitar.wav", "piano.wav", "other.wav"],
+  },
+  localMlFour: {
+    label: "Local ML 4 Stems",
+    short: "Mature Demucs split: vocals, drums, bass, other.",
+    stems: ["vocals.wav", "drums.wav", "bass.wav", "other.wav"],
+  },
   vocalInstrumental: {
-    label: "Vocal + Instrumental",
-    short: "Foreground vocal estimate plus complement.",
+    label: "Classic Vocal + Instrumental",
+    short: "DSP foreground estimate plus instrumental complement.",
     stems: ["vocals.wav", "instrumental.wav"],
   },
   fullBand: {
-    label: "Full Band Layers",
+    label: "Classic DSP Layers",
     short: "HPSS, bass-band, foreground, and residual layers.",
     stems: [
       "vocal_foreground.wav",
@@ -93,7 +104,7 @@ const waveformBars = Array.from({ length: 80 }, (_, index) => {
 function App() {
   const [inputPath, setInputPath] = useState("");
   const [outputDir, setOutputDir] = useState("");
-  const [mode, setMode] = useState<StemMode>("vocalInstrumental");
+  const [mode, setMode] = useState<StemMode>("localMlSix");
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(null);
   const [report, setReport] = useState<ExtractionReport | null>(null);
   const [progress, setProgress] = useState<ProgressEvent>({
@@ -131,7 +142,9 @@ function App() {
       `${report.stems.length} wav stems`,
       `${report.sampleRate.toLocaleString()} Hz`,
       `${report.channels} ch`,
-      `${(report.reconstructionError * 100).toFixed(2)}% residual error`,
+      report.reconstructionError >= 0
+        ? `${(report.reconstructionError * 100).toFixed(2)}% residual error`
+        : "local ML output",
     ];
   }, [report]);
 
@@ -229,7 +242,7 @@ function App() {
           </div>
           <div>
             <h1>YES Stems</h1>
-            <p>Local non-AI stem extraction</p>
+            <p>Offline ML + DSP stem extraction</p>
           </div>
         </div>
 
@@ -284,7 +297,7 @@ function App() {
                   className={mode === modeKey ? "selected" : ""}
                   onClick={() => setMode(modeKey)}
                 >
-                  {modeKey === "vocalInstrumental" ? <Mic2 size={16} /> : <Drum size={16} />}
+                  <ModeIcon mode={modeKey} />
                   <span>{modeDetails[modeKey].label}</span>
                 </button>
               ))}
@@ -397,9 +410,9 @@ function App() {
             </div>
             <ul>
               {(report?.methodNotes ?? [
-                "Phase-preserving STFT masks.",
-                "HPSS plus repeating-background cues.",
-                "Useful layers, not recovered multitracks.",
+                "Local ML modes run Demucs on-device; no cloud or API calls.",
+                "Classic DSP modes remain available as deterministic fallback.",
+                "Guitar and piano stems use an experimental 6-source model.",
               ]).map((note) => (
                 <li key={note}>{note}</li>
               ))}
@@ -418,6 +431,18 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function ModeIcon({ mode }: { mode: StemMode }) {
+  if (mode === "localMlSix" || mode === "localMlFour") {
+    return <BrainCircuit size={16} />;
+  }
+
+  if (mode === "vocalInstrumental") {
+    return <Mic2 size={16} />;
+  }
+
+  return <Drum size={16} />;
 }
 
 function compactPath(path: string) {
