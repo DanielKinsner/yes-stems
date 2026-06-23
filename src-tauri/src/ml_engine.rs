@@ -240,6 +240,7 @@ fn invoke_demucs(
         .arg(model)
         .arg("-d")
         .arg(device)
+        .arg("--int24")
         .arg("-o")
         .arg(work_dir)
         .arg(input_path);
@@ -252,6 +253,13 @@ fn demucs_runners() -> Vec<DemucsRunner> {
         runners.push(DemucsRunner {
             label: format!("YES_STEMS_DEMUCS={}", path.to_string_lossy()),
             program: path,
+            args_prefix: Vec::new(),
+        });
+    }
+    for path in local_demucs_candidates() {
+        runners.push(DemucsRunner {
+            label: format!("local venv {}", path.display()),
+            program: path.into_os_string(),
             args_prefix: Vec::new(),
         });
     }
@@ -271,6 +279,23 @@ fn demucs_runners() -> Vec<DemucsRunner> {
         label: "py -m demucs".to_string(),
     });
     runners
+}
+
+fn local_demucs_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(
+            current_dir
+                .join(".venv-demucs")
+                .join("Scripts")
+                .join("demucs.exe"),
+        );
+        candidates.push(current_dir.join(".venv-demucs").join("bin").join("demucs"));
+    }
+    candidates
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
 }
 
 fn stem_plan(mode: StemMode) -> Result<Vec<MlStemSpec>, MlEngineError> {
@@ -405,5 +430,14 @@ mod tests {
 
         assert!(!status.checked.is_empty());
         assert_eq!(status.device, "cpu");
+    }
+
+    #[test]
+    fn local_demucs_candidates_do_not_include_missing_paths() {
+        assert!(
+            local_demucs_candidates()
+                .iter()
+                .all(|candidate| candidate.exists())
+        );
     }
 }
