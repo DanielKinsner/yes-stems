@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "screenshot:ui": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-ui-screenshot.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:frontend": "npm test && npm run build",
