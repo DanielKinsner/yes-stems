@@ -55,9 +55,15 @@ Frontend tests should cover:
 
 ## Optional Local ML Smoke
 
-When Demucs is installed locally, run a short private audio fixture through both
-local ML modes. This validates the sidecar/runtime environment, not the unit
-test suite:
+Install the verified local Demucs stack with Python 3.12:
+
+```powershell
+.\scripts\setup-demucs.ps1 -Python "C:\path\to\python.exe"
+```
+
+When Demucs is installed locally, run a short private audio fixture or synthetic
+WAV through both local ML modes. This validates the runtime environment, not
+the unit test suite:
 
 ```powershell
 $env:YES_STEMS_DEMUCS_DEVICE = "cpu"
@@ -71,6 +77,23 @@ Then choose:
 
 The app should write the expected WAV filenames to the chosen output folder.
 Do not commit private fixtures or generated stems.
+
+Direct CLI smoke commands:
+
+```powershell
+.\.venv-demucs\Scripts\demucs.exe -n htdemucs -d cpu --int24 -o test-output\demucs-smoke\out-4 path\to\fixture.wav
+.\.venv-demucs\Scripts\demucs.exe -n htdemucs_6s -d cpu --int24 -o test-output\demucs-smoke\out-6 path\to\fixture.wav
+```
+
+Expected 4-stem files are `bass.wav`, `drums.wav`, `other.wav`, and
+`vocals.wav`. Expected 6-stem files add `guitar.wav` and `piano.wav`.
+
+Latest local smoke evidence:
+
+- `htdemucs` wrote the four expected WAV stems from
+  `test-output\demucs-smoke\synthetic.wav`.
+- `htdemucs_6s` downloaded its model weights and wrote the six expected WAV
+  stems from the same synthetic WAV.
 
 ## Local Audio
 

@@ -19,6 +19,10 @@ guarantee recovered studio multitracks. YES Stems must explain when guitar and
 piano use the experimental Demucs 6-source path and must keep the classic DSP
 layers labeled as utility layers.
 
+Current development builds can use a repo-local Demucs runtime installed with
+`scripts/setup-demucs.ps1`. Distribution builds still need a bundled runtime or
+model packaging plan before they are consumer-ready as standalone installers.
+
 ## Non-Goals
 
 - No cloud processing.
@@ -115,7 +119,8 @@ Human listening can guide future tuning, but it does not gate completion.
 
 ## Deferred
 
-- Bundled Python/Demucs sidecar or ONNX/Core ML runtime.
+- Bundled Python/Demucs sidecar, model cache management, or ONNX/Core ML
+  runtime.
 - GPU acceleration and device auto-detection.
 - Batch queues.
 - Stem audition playback inside the app.

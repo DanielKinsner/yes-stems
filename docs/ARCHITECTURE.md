@@ -38,10 +38,31 @@ Runtime selection:
 
 - `YES_STEMS_DEMUCS` can point at a bundled or manually installed Demucs
   executable.
+- If no override is present, the backend checks the repo-local dev runtime at
+  `.venv-demucs\Scripts\demucs.exe` on Windows or `.venv-demucs/bin/demucs` on
+  Unix-like systems.
 - `YES_STEMS_DEMUCS_DEVICE` defaults to `cpu` and can be set to a Demucs device
   value such as `cuda` when the local runtime supports it.
-- If no override is present, the backend tries `demucs`, `python -m demucs`,
+- After the repo-local runtime, the backend tries `demucs`, `python -m demucs`,
   then `py -m demucs`.
+
+Verified dev runtime:
+
+- `.venv-demucs/` is ignored by git and can be recreated with
+  `scripts/setup-demucs.ps1`.
+- `requirements-demucs.txt` pins `demucs==4.0.1`, `torch==2.5.1`,
+  `torchaudio==2.5.1`, and `soundfile==0.14.0`.
+- `soundfile` provides the WAV writer backend for the pinned torchaudio stack.
+  Newer torchaudio releases may require TorchCodec plus shared FFmpeg DLLs on
+  Windows and should be revalidated before changing the pin.
+- Demucs model weights are downloaded by Demucs into the local Torch cache on
+  first use. They are not committed to the repo.
+
+Packaging seam:
+
+- The current code can call an installed Demucs executable. A consumer-ready
+  installer still needs an explicit bundled sidecar/model strategy or a move to
+  an embedded runtime such as ONNX Runtime/Core ML.
 
 ## Classic DSP Signal Flow
 
