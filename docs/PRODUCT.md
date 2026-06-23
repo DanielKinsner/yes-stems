@@ -118,6 +118,13 @@ Quality is evaluated with objective and mechanical checks:
 
 Human listening can guide future tuning, but it does not gate completion.
 
+## UX Contract
+
+YES Stems should feel like focused pro-audio software, not a generic SaaS
+dashboard. The primary screen should keep setup, analysis, processing, and
+results visible as one workstation so producers can understand the extraction
+state at a glance.
+
 ## Deferred
 
 - Bundle-size optimization and sidecar hardening.
