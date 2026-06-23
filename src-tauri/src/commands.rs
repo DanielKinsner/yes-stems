@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::{
     audio_io, ml_engine, separation,
-    types::{ExtractRequest, ExtractionReport, ProgressEvent, TrackAnalysis},
+    types::{ExtractRequest, ExtractionReport, LocalMlStatus, ProgressEvent, TrackAnalysis},
 };
 
 #[tauri::command]
@@ -15,6 +15,13 @@ pub async fn analyze_track(input_path: String) -> Result<TrackAnalysis, String> 
     .await
     .map_err(|error| error.to_string())?
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn check_local_ml_runtime() -> Result<LocalMlStatus, String> {
+    tauri::async_runtime::spawn_blocking(ml_engine::check_runtime)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

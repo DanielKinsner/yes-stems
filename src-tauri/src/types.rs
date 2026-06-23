@@ -51,6 +51,16 @@ pub struct TrackAnalysis {
     pub peak: f32,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalMlStatus {
+    pub available: bool,
+    pub runner: Option<String>,
+    pub device: String,
+    pub checked: Vec<String>,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressEvent {

@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioIoError},
-    types::{ExtractionReport, StemFile, StemMode},
+    types::{ExtractionReport, LocalMlStatus, StemFile, StemMode},
 };
 
 #[derive(Debug, Error)]
@@ -139,6 +139,37 @@ where
     })
 }
 
+pub fn check_runtime() -> LocalMlStatus {
+    let device = demucs_device();
+    let mut checked = Vec::new();
+
+    for runner in demucs_runners() {
+        checked.push(runner.label.clone());
+        match probe_runner(&runner) {
+            Ok(output) if output.status.success() => {
+                return LocalMlStatus {
+                    available: true,
+                    runner: Some(runner.label),
+                    device,
+                    checked,
+                    detail: "Demucs runtime is available locally.".to_string(),
+                };
+            }
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => continue,
+        }
+    }
+
+    LocalMlStatus {
+        available: false,
+        runner: None,
+        device,
+        checked,
+        detail: "Demucs is not available locally. Install Demucs on PATH, use python -m demucs, or set YES_STEMS_DEMUCS to a bundled executable path.".to_string(),
+    }
+}
+
 struct DemucsOutput {
     status: std::process::ExitStatus,
     stdout: String,
@@ -151,34 +182,48 @@ fn run_demucs(
     input_path: &Path,
     work_dir: &Path,
 ) -> Result<DemucsOutput, MlEngineError> {
-    let device = env::var("YES_STEMS_DEMUCS_DEVICE").unwrap_or_else(|_| "cpu".to_string());
+    let device = demucs_device();
+    let runner = resolve_demucs_runner()?;
+    match invoke_demucs(&runner, model, &device, input_path, work_dir) {
+        Ok(output) => Ok(DemucsOutput {
+            status: output.status,
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            runner: runner.label,
+        }),
+        Err(error) => Err(MlEngineError::RuntimeFailed {
+            runner: runner.label,
+            code: None,
+            stdout: String::new(),
+            stderr: error.to_string(),
+        }),
+    }
+}
+
+fn resolve_demucs_runner() -> Result<DemucsRunner, MlEngineError> {
     let mut attempted = Vec::new();
 
     for runner in demucs_runners() {
         attempted.push(runner.label.clone());
-        let output = invoke_demucs(&runner, model, &device, input_path, work_dir);
-        match output {
-            Ok(output) => {
-                return Ok(DemucsOutput {
-                    status: output.status,
-                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    runner: runner.label,
-                });
-            }
+        match probe_runner(&runner) {
+            Ok(output) if output.status.success() => return Ok(runner),
+            Ok(_) => continue,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(MlEngineError::RuntimeFailed {
-                    runner: runner.label,
-                    code: None,
-                    stdout: String::new(),
-                    stderr: error.to_string(),
-                });
-            }
+            Err(_) => continue,
         }
     }
 
     Err(MlEngineError::RuntimeUnavailable(attempted.join(", ")))
+}
+
+fn demucs_device() -> String {
+    env::var("YES_STEMS_DEMUCS_DEVICE").unwrap_or_else(|_| "cpu".to_string())
+}
+
+fn probe_runner(runner: &DemucsRunner) -> std::io::Result<Output> {
+    let mut command = Command::new(&runner.program);
+    command.args(&runner.args_prefix).arg("--help");
+    command.output()
 }
 
 fn invoke_demucs(
@@ -352,5 +397,13 @@ mod tests {
         assert!(filenames.contains(&"guitar.wav"));
         assert!(filenames.contains(&"piano.wav"));
         assert_eq!(stems.len(), 6);
+    }
+
+    #[test]
+    fn runtime_status_reports_attempted_runners() {
+        let status = check_runtime();
+
+        assert!(!status.checked.is_empty());
+        assert_eq!(status.device, "cpu");
     }
 }

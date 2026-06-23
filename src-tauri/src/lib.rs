@@ -13,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::analyze_track,
+            commands::check_local_ml_runtime,
             commands::extract_stems
         ])
         .run(tauri::generate_context!())
