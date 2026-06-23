@@ -10,6 +10,22 @@ sending audio to a cloud service or frontier-model API.
 
 ![YES Stems desktop workspace](docs/screenshots/yes-stems-installed-app.png)
 
+## Common Commands
+
+```powershell
+npm run verify:frontend
+npm run verify:rust
+npm run build:windows
+```
+
+Regenerate the UI screenshot after frontend changes:
+
+```powershell
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
+npm run screenshot:ui
+```
+
 ## Local Demucs Runtime
 
 The current dev runtime uses Demucs locally through a repo-local Python venv.
