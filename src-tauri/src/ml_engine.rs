@@ -12,7 +12,9 @@ use thiserror::Error;
 use crate::{
     audio_io::{self, AudioIoError},
     stem_cleanup,
-    types::{ExtractionReport, LocalMlStatus, StemCleanupOptions, StemFile, StemMode},
+    types::{
+        ExtractionReport, LocalMlStatus, StemCleanupOptions, StemFile, StemMode, TrackAnalysis,
+    },
 };
 
 #[derive(Debug, Error)]
@@ -44,6 +46,18 @@ pub enum MlEngineError {
     },
     #[error("could not copy local ML stem: {0}")]
     CopyStem(std::io::Error),
+    #[error(
+        "local ML stem {stem} shape mismatch: expected {expected_sample_rate} Hz, {expected_channels} ch, {expected_frames} frames; got {actual_sample_rate} Hz, {actual_channels} ch, {actual_frames} frames"
+    )]
+    StemShapeMismatch {
+        stem: String,
+        expected_sample_rate: u32,
+        actual_sample_rate: u32,
+        expected_channels: usize,
+        actual_channels: usize,
+        expected_frames: usize,
+        actual_frames: usize,
+    },
     #[error("mode {0:?} is not a local ML mode")]
     UnsupportedMode(StemMode),
 }
@@ -137,8 +151,9 @@ where
             audio_io::write_wav(&target, audio.sample_rate, &audio.samples)?;
         } else {
             fs::copy(&source, &target).map_err(MlEngineError::CopyStem)?;
-            audio = audio_io::decode_audio(&target)?;
         }
+        audio = audio_io::decode_audio(&target)?;
+        validate_stem_shape(&audio, &analysis, stem.name)?;
         stem_files.push(StemFile {
             name: stem.name.to_string(),
             role: stem.role.to_string(),
@@ -165,6 +180,29 @@ where
         stems: stem_files,
         method_notes: method_notes(mode, model, cleanup),
         reconstruction_error: -1.0,
+    })
+}
+
+fn validate_stem_shape(
+    audio: &audio_io::AudioBuffer,
+    analysis: &TrackAnalysis,
+    stem: &str,
+) -> Result<(), MlEngineError> {
+    if audio.sample_rate == analysis.sample_rate
+        && audio.channels == analysis.channels
+        && audio.frames() == analysis.frames
+    {
+        return Ok(());
+    }
+
+    Err(MlEngineError::StemShapeMismatch {
+        stem: stem.to_string(),
+        expected_sample_rate: analysis.sample_rate,
+        actual_sample_rate: audio.sample_rate,
+        expected_channels: analysis.channels,
+        actual_channels: audio.channels,
+        expected_frames: analysis.frames,
+        actual_frames: audio.frames(),
     })
 }
 
@@ -668,5 +706,30 @@ mod tests {
                 .iter()
                 .any(|note| note.contains("Stem cleanup applied at strength 7"))
         );
+    }
+
+    #[test]
+    fn validates_local_ml_stem_shape_against_source_analysis() {
+        let analysis = TrackAnalysis {
+            file_name: "song".to_string(),
+            sample_rate: 44_100,
+            channels: 2,
+            frames: 100,
+            duration_seconds: 100.0 / 44_100.0,
+            peak: 0.5,
+            waveform_peaks: vec![0.5],
+        };
+        let audio = audio_io::AudioBuffer {
+            sample_rate: 48_000,
+            channels: 2,
+            samples: vec![vec![0.0; 100], vec![0.0; 100]],
+        };
+
+        let result = validate_stem_shape(&audio, &analysis, "Vocals");
+
+        assert!(matches!(
+            result,
+            Err(MlEngineError::StemShapeMismatch { stem, .. }) if stem == "Vocals"
+        ));
     }
 }

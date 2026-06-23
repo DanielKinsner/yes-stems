@@ -77,6 +77,13 @@ where
     );
     let mut stems = render_stems(&stft, mode, &mask_set);
 
+    progress(
+        "verify",
+        0.70,
+        "checking partition reconstruction".to_string(),
+    );
+    let reconstruction_error = reconstruction_error(audio, mode, &stems);
+
     progress("export", 0.76, "writing 24-bit wav stems".to_string());
     let mut stem_files = Vec::with_capacity(stems.len());
     for stem in &mut stems {
@@ -92,13 +99,6 @@ where
             peak: audio_io::peak(&stem.samples),
         });
     }
-
-    progress(
-        "verify",
-        0.92,
-        "checking partition reconstruction".to_string(),
-    );
-    let reconstruction_error = reconstruction_error(audio, mode, &stems);
 
     progress("complete", 1.0, "stem extraction complete".to_string());
     Ok(ExtractionReport {
@@ -724,6 +724,42 @@ mod tests {
                 .method_notes
                 .iter()
                 .any(|note| note.contains("Stem cleanup applied at strength 4"))
+        );
+    }
+
+    #[test]
+    fn cleanup_does_not_change_partition_reconstruction_diagnostic() {
+        let audio = synthetic_audio();
+        let temp_raw = tempfile::tempdir().expect("raw temp dir");
+        let temp_clean = tempfile::tempdir().expect("clean temp dir");
+
+        let raw = extract_to_directory(
+            &audio,
+            temp_raw.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning::default(),
+            StemCleanupOptions::default(),
+            |_, _, _| {},
+        )
+        .expect("raw extract");
+        let clean = extract_to_directory(
+            &audio,
+            temp_clean.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning::default(),
+            StemCleanupOptions {
+                enabled: true,
+                strength: 10,
+            },
+            |_, _, _| {},
+        )
+        .expect("clean extract");
+
+        assert!(
+            (raw.reconstruction_error - clean.reconstruction_error).abs() < 1.0e-6,
+            "raw {} clean {}",
+            raw.reconstruction_error,
+            clean.reconstruction_error
         );
     }
 
