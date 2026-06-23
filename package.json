@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "preview:local": "vite preview --host 127.0.0.1 --port 4173",
     "screenshot:ui": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-ui-screenshot.ps1",
+    "verify:screenshot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ui-screenshot.ps1",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:frontend": "npm test && npm run build",
