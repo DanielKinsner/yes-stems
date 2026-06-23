@@ -35,6 +35,7 @@ pub async fn extract_stems(
         let input_path = PathBuf::from(request.input_path);
         let output_dir = PathBuf::from(request.output_dir);
         let mode = request.mode;
+        let tuning = request.tuning.unwrap_or_default().clamped();
         let progress_app = app.clone();
 
         let emit_progress = move |phase: &str, progress: f32, detail: String| {
@@ -58,8 +59,14 @@ pub async fn extract_stems(
             )
             .map_err(|error| error.to_string())
         } else {
-            separation::extract_track_to_directory(&input_path, &output_dir, mode, emit_progress)
-                .map_err(|error| error.to_string())
+            separation::extract_track_to_directory(
+                &input_path,
+                &output_dir,
+                mode,
+                tuning,
+                emit_progress,
+            )
+            .map_err(|error| error.to_string())
         }
     })
     .await

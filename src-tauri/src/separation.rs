@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioBuffer, AudioIoError},
-    types::{ExtractionReport, StemFile, StemMode},
+    types::{ExtractionReport, SeparationTuning, StemFile, StemMode},
 };
 
 const WINDOW_SIZE: usize = 2048;
@@ -42,6 +42,7 @@ pub fn extract_to_directory<F>(
     audio: &AudioBuffer,
     output_dir: &Path,
     mode: StemMode,
+    tuning: SeparationTuning,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -63,7 +64,8 @@ where
         0.30,
         "estimating harmonic and percussive masks".to_string(),
     );
-    let mask_set = build_masks(&stft, audio.sample_rate);
+    let tuning = tuning.clamped();
+    let mask_set = build_masks(&stft, audio.sample_rate, tuning);
 
     progress(
         "render",
@@ -105,7 +107,7 @@ where
         frames: audio.frames(),
         duration_seconds: audio.duration_seconds(),
         stems: stem_files,
-        method_notes: method_notes(mode),
+        method_notes: method_notes(mode, tuning),
         reconstruction_error,
     })
 }
@@ -114,6 +116,7 @@ pub fn extract_track_to_directory<F>(
     input_path: &Path,
     output_root: &Path,
     mode: StemMode,
+    tuning: SeparationTuning,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -123,7 +126,7 @@ where
     let audio = audio_io::decode_audio(input_path)?;
     let source_name = audio_io::file_name(input_path);
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
-    let mut report = extract_to_directory(&audio, &output_dir, mode, progress)?;
+    let mut report = extract_to_directory(&audio, &output_dir, mode, tuning, progress)?;
     report.source_name = source_name;
     Ok(report)
 }
@@ -224,10 +227,13 @@ struct MaskSet {
     residual: Vec<Vec<f32>>,
 }
 
-fn build_masks(stft: &Stft, sample_rate: u32) -> MaskSet {
+fn build_masks(stft: &Stft, sample_rate: u32, tuning: SeparationTuning) -> MaskSet {
     let harmonic_score = median_time(&stft.magnitudes, 8, 1);
     let percussive_score = median_frequency(&stft.magnitudes, 10);
     let repeating_score = median_time(&stft.magnitudes, 96, 8);
+    let aggressiveness = 0.70 + (f32::from(tuning.aggressiveness) / 10.0) * 0.70;
+    let artifact_reduction = f32::from(tuning.artifact_reduction) / 10.0;
+    let mask_ceiling = 0.98 - artifact_reduction * 0.26;
 
     let mut vocal = zeros(stft.frames);
     let mut instrumental = zeros(stft.frames);
@@ -240,8 +246,8 @@ fn build_masks(stft: &Stft, sample_rate: u32) -> MaskSet {
         for bin_index in 0..HALF_BINS {
             let h_score = harmonic_score[frame_index][bin_index].max(EPSILON);
             let p_score = percussive_score[frame_index][bin_index].max(EPSILON);
-            let h_mask = soft_ratio(h_score, p_score * 1.6);
-            let p_mask = soft_ratio(p_score, h_score * 1.6);
+            let h_mask = soft_ratio(h_score * aggressiveness, p_score * 1.6);
+            let p_mask = soft_ratio(p_score * aggressiveness, h_score * 1.6);
             let hp_residual = (1.0 - h_mask - p_mask).clamp(0.0, 1.0);
 
             let frequency = bin_frequency(bin_index, sample_rate);
@@ -250,21 +256,35 @@ fn build_masks(stft: &Stft, sample_rate: u32) -> MaskSet {
             let repeating = repeating_score[frame_index][bin_index]
                 .min(stft.magnitudes[frame_index][bin_index]);
             let novelty = (stft.magnitudes[frame_index][bin_index] - repeating).max(0.0);
-            let voice_score = novelty * vocal_band * (0.65 + 0.35 * h_mask);
+            let voice_score = novelty * vocal_band * (0.65 + 0.35 * h_mask) * aggressiveness;
             let backing_score = repeating
                 + (p_score * 0.25)
                 + stft.magnitudes[frame_index][bin_index] * (1.0 - vocal_band) * 0.2;
-            let vocal_mask = soft_ratio(voice_score, backing_score).clamp(0.0, 0.92);
+            let vocal_mask = soft_ratio(voice_score, backing_score).clamp(0.0, mask_ceiling);
             let non_vocal = 1.0 - vocal_mask;
 
             vocal[frame_index][bin_index] = vocal_mask;
             instrumental[frame_index][bin_index] = non_vocal;
-            percussive[frame_index][bin_index] = p_mask * non_vocal;
-            bass[frame_index][bin_index] = h_mask * low_band * non_vocal;
-            harmonic[frame_index][bin_index] = h_mask * (1.0 - low_band) * non_vocal;
+            percussive[frame_index][bin_index] = (p_mask * non_vocal).min(mask_ceiling);
+            bass[frame_index][bin_index] = (h_mask * low_band * non_vocal).min(mask_ceiling);
+            harmonic[frame_index][bin_index] =
+                (h_mask * (1.0 - low_band) * non_vocal).min(mask_ceiling);
             residual[frame_index][bin_index] =
                 (hp_residual * non_vocal + vocal_mask * 0.02).clamp(0.0, 1.0);
         }
+    }
+
+    if tuning.artifact_reduction > 0 {
+        smooth_mask(&mut vocal, tuning.artifact_reduction);
+        for frame_index in 0..stft.frames {
+            for bin_index in 0..HALF_BINS {
+                instrumental[frame_index][bin_index] = 1.0 - vocal[frame_index][bin_index];
+            }
+        }
+        smooth_mask(&mut percussive, tuning.artifact_reduction);
+        smooth_mask(&mut bass, tuning.artifact_reduction);
+        smooth_mask(&mut harmonic, tuning.artifact_reduction);
+        smooth_mask(&mut residual, tuning.artifact_reduction);
     }
 
     MaskSet {
@@ -335,11 +355,15 @@ fn render_stems(stft: &Stft, mode: StemMode, masks: &MaskSet) -> Vec<StemRender>
     }
 }
 
-fn method_notes(mode: StemMode) -> Vec<String> {
+fn method_notes(mode: StemMode, tuning: SeparationTuning) -> Vec<String> {
     let mut notes = vec![
         "Local non-AI extraction; no model inference or cloud processing.".to_string(),
         "Masks are applied to the original complex spectra to preserve mixture phase.".to_string(),
         "Full-band labels are utility layers, not recovered original multitracks.".to_string(),
+        format!(
+            "DSP tuning used aggressiveness {} and artifact reduction {}.",
+            tuning.aggressiveness, tuning.artifact_reduction
+        ),
     ];
     if mode == StemMode::VocalInstrumental {
         notes.push("Vocal estimate relies on non-repeating midrange foreground cues.".to_string());
@@ -464,6 +488,29 @@ fn median_frequency(magnitudes: &[Vec<f32>], radius: usize) -> Vec<Vec<f32>> {
     output
 }
 
+fn smooth_mask(mask: &mut [Vec<f32>], artifact_reduction: u8) {
+    if mask.len() < 3 {
+        return;
+    }
+
+    let mix = (f32::from(artifact_reduction.min(10)) / 10.0) * 0.32;
+    if mix <= 0.0 {
+        return;
+    }
+
+    let original = mask.to_vec();
+    for frame_index in 1..(mask.len() - 1) {
+        for bin_index in 0..HALF_BINS {
+            let smoothed = (original[frame_index - 1][bin_index]
+                + original[frame_index][bin_index] * 2.0
+                + original[frame_index + 1][bin_index])
+                / 4.0;
+            mask[frame_index][bin_index] =
+                (original[frame_index][bin_index] * (1.0 - mix) + smoothed * mix).clamp(0.0, 1.0);
+        }
+    }
+}
+
 fn median(values: &mut [f32]) -> f32 {
     values.sort_by(f32::total_cmp);
     values[values.len() / 2]
@@ -542,6 +589,7 @@ mod tests {
             &audio,
             temp.path(),
             StemMode::VocalInstrumental,
+            SeparationTuning::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -567,8 +615,14 @@ mod tests {
         let audio = synthetic_audio();
         let temp = tempfile::tempdir().expect("temp dir");
 
-        let report = extract_to_directory(&audio, temp.path(), StemMode::FullBand, |_, _, _| {})
-            .expect("extract stems");
+        let report = extract_to_directory(
+            &audio,
+            temp.path(),
+            StemMode::FullBand,
+            SeparationTuning::default(),
+            |_, _, _| {},
+        )
+        .expect("extract stems");
 
         let filenames = report
             .stems
@@ -580,6 +634,55 @@ mod tests {
         assert!(filenames.contains(&"bass_band.wav".to_string()));
         assert!(filenames.contains(&"harmonic_bed.wav".to_string()));
         assert!(report.reconstruction_error < 0.30);
+    }
+
+    #[test]
+    fn tuning_changes_classic_dsp_masks() {
+        let audio = synthetic_audio();
+        let temp_a = tempfile::tempdir().expect("temp dir");
+        let temp_b = tempfile::tempdir().expect("temp dir");
+
+        let gentle = extract_to_directory(
+            &audio,
+            temp_a.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning {
+                aggressiveness: 0,
+                artifact_reduction: 10,
+            },
+            |_, _, _| {},
+        )
+        .expect("gentle extract");
+        let assertive = extract_to_directory(
+            &audio,
+            temp_b.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning {
+                aggressiveness: 10,
+                artifact_reduction: 0,
+            },
+            |_, _, _| {},
+        )
+        .expect("assertive extract");
+
+        let gentle_vocal = gentle
+            .stems
+            .iter()
+            .find(|stem| stem.name == "Vocals")
+            .expect("gentle vocal");
+        let assertive_vocal = assertive
+            .stems
+            .iter()
+            .find(|stem| stem.name == "Vocals")
+            .expect("assertive vocal");
+
+        assert_ne!(gentle_vocal.peak, assertive_vocal.peak);
+        assert!(
+            gentle
+                .method_notes
+                .iter()
+                .any(|note| note.contains("aggressiveness 0"))
+        );
     }
 
     fn synthetic_audio() -> AudioBuffer {

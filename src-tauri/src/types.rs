@@ -38,6 +38,32 @@ pub struct ExtractRequest {
     pub input_path: String,
     pub output_dir: String,
     pub mode: StemMode,
+    pub tuning: Option<SeparationTuning>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SeparationTuning {
+    pub aggressiveness: u8,
+    pub artifact_reduction: u8,
+}
+
+impl Default for SeparationTuning {
+    fn default() -> Self {
+        Self {
+            aggressiveness: 5,
+            artifact_reduction: 5,
+        }
+    }
+}
+
+impl SeparationTuning {
+    pub fn clamped(self) -> Self {
+        Self {
+            aggressiveness: self.aggressiveness.min(10),
+            artifact_reduction: self.artifact_reduction.min(10),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -49,6 +75,7 @@ pub struct TrackAnalysis {
     pub frames: usize,
     pub duration_seconds: f64,
     pub peak: f32,
+    pub waveform_peaks: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

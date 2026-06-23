@@ -91,6 +91,7 @@ pub fn analyze_track(path: &Path) -> Result<TrackAnalysis, AudioIoError> {
         frames: audio.frames(),
         duration_seconds: audio.duration_seconds(),
         peak: audio.peak(),
+        waveform_peaks: waveform_peaks(&audio, 96),
     })
 }
 
@@ -190,6 +191,30 @@ pub fn decode_audio(path: &Path) -> Result<AudioBuffer, AudioIoError> {
     };
     audio.ensure_valid()?;
     Ok(audio)
+}
+
+fn waveform_peaks(audio: &AudioBuffer, buckets: usize) -> Vec<f32> {
+    if buckets == 0 || audio.frames() == 0 {
+        return Vec::new();
+    }
+
+    let frames = audio.frames();
+    let mut peaks = Vec::with_capacity(buckets);
+    for bucket_index in 0..buckets {
+        let start = bucket_index * frames / buckets;
+        let end = ((bucket_index + 1) * frames / buckets)
+            .max(start + 1)
+            .min(frames);
+        let mut peak = 0.0_f32;
+        for channel in &audio.samples {
+            for sample in &channel[start..end] {
+                peak = peak.max(sample.abs());
+            }
+        }
+        peaks.push(peak.clamp(0.0, 1.0));
+    }
+
+    peaks
 }
 
 pub fn write_wav(path: &Path, sample_rate: u32, samples: &[Vec<f32>]) -> Result<(), AudioIoError> {
