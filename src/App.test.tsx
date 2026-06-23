@@ -242,4 +242,118 @@ describe("YES Stems app", () => {
       expect(play).toHaveBeenCalled();
     });
   });
+
+  it("exports completed stems to a chosen folder", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+
+    tauriMocks.open
+      .mockResolvedValueOnce("C:\\music\\song.wav")
+      .mockResolvedValueOnce("C:\\renders")
+      .mockResolvedValueOnce("D:\\exports");
+    tauriMocks.invoke.mockImplementation((command: string, args?: unknown) => {
+      if (command === "check_local_ml_runtime") {
+        return Promise.resolve({
+          available: true,
+          runner: "demucs.exe",
+          device: "cpu",
+          checked: [],
+          detail: "ready",
+        });
+      }
+
+      if (command === "analyze_track") {
+        return Promise.resolve({
+          fileName: "song",
+          sampleRate: 44_100,
+          channels: 2,
+          frames: 132_300,
+          durationSeconds: 3,
+          peak: 0.8,
+        });
+      }
+
+      if (command === "extract_stems") {
+        return Promise.resolve({
+          sourceName: "song",
+          mode: "localMlSix",
+          modeLabel: "Local ML 6 Stems",
+          outputDir: "C:\\renders\\song",
+          sampleRate: 44_100,
+          channels: 2,
+          frames: 132_300,
+          durationSeconds: 3,
+          reconstructionError: -1,
+          methodNotes: ["Local Demucs model inference (htdemucs_6s); no cloud or API calls."],
+          stems: [
+            {
+              name: "Vocals",
+              role: "Demucs vocal stem from local offline model inference.",
+              path: "C:\\renders\\song\\vocals.wav",
+              frames: 132_300,
+              peak: 0.5,
+            },
+            {
+              name: "Guitar",
+              role: "Experimental Demucs guitar stem.",
+              path: "C:\\renders\\song\\guitar.wav",
+              frames: 132_300,
+              peak: 0.7,
+            },
+          ],
+        });
+      }
+
+      if (command === "export_stems") {
+        expect(args).toEqual({
+          request: {
+            sourceName: "song",
+            destinationRoot: "D:\\exports",
+            stems: [
+              {
+                name: "Vocals",
+                role: "Demucs vocal stem from local offline model inference.",
+                path: "C:\\renders\\song\\vocals.wav",
+                frames: 132_300,
+                peak: 0.5,
+              },
+              {
+                name: "Guitar",
+                role: "Experimental Demucs guitar stem.",
+                path: "C:\\renders\\song\\guitar.wav",
+                frames: 132_300,
+                peak: 0.7,
+              },
+            ],
+          },
+        });
+        return Promise.resolve({
+          exportDir: "D:\\exports\\song",
+          exportedFiles: 2,
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected command ${command}`));
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
+    await screen.findByText("song");
+    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
+
+    await screen.findByRole("heading", { name: "Vocals" });
+    fireEvent.click(screen.getByRole("button", { name: /Export All/i }));
+
+    await waitFor(() => {
+      expect(tauriMocks.openPath).toHaveBeenCalledWith("D:\\exports\\song");
+      expect(screen.getByText(/Exported 2 files/i)).toBeInTheDocument();
+    });
+  });
 });

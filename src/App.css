@@ -877,6 +877,21 @@ p {
   background: rgba(120, 66, 18, 0.22);
   font-size: 11px;
   line-height: 14px;
+  overflow-wrap: anywhere;
+}
+
+.export-status {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  color: #c8f5e4;
+  border: 1px solid rgba(120, 216, 190, 0.35);
+  border-radius: 5px;
+  background: rgba(46, 145, 118, 0.16);
+  font-size: 11px;
+  line-height: 14px;
+  overflow-wrap: anywhere;
 }
 
 .result-actions {
