@@ -23,6 +23,11 @@ Regenerate the UI screenshot after frontend changes:
 ```powershell
 npm run build
 npm run preview -- --host 127.0.0.1 --port 4173
+```
+
+Then in a second shell:
+
+```powershell
 npm run screenshot:ui
 ```
 
