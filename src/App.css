@@ -508,6 +508,24 @@ button {
   list-style: none;
 }
 
+.engine-status {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  color: #30514b;
+  background: #eef8f4;
+  border: 1px solid #cae7de;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 650;
+}
+
+.engine-status-warning {
+  color: #7a4a08;
+  background: #fff7e7;
+  border-color: #e7c47c;
+}
+
 .method-panel li {
   color: #4f5f5b;
   font-size: 12px;

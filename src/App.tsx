@@ -31,6 +31,14 @@ type TrackAnalysis = {
   peak: number;
 };
 
+type LocalMlStatus = {
+  available: boolean;
+  runner: string | null;
+  device: string;
+  checked: string[];
+  detail: string;
+};
+
 type ProgressEvent = {
   phase: string;
   progress: number;
@@ -106,6 +114,7 @@ function App() {
   const [outputDir, setOutputDir] = useState("");
   const [mode, setMode] = useState<StemMode>("localMlSix");
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(null);
+  const [localMlStatus, setLocalMlStatus] = useState<LocalMlStatus | null>(null);
   const [report, setReport] = useState<ExtractionReport | null>(null);
   const [progress, setProgress] = useState<ProgressEvent>({
     phase: "idle",
@@ -129,7 +138,38 @@ function App() {
     };
   }, []);
 
-  const canRun = inputPath.length > 0 && outputDir.length > 0 && !isExtracting;
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+
+    let alive = true;
+    invoke<LocalMlStatus>("check_local_ml_runtime")
+      .then((status) => {
+        if (alive) {
+          setLocalMlStatus(status);
+        }
+      })
+      .catch((caught) => {
+        if (alive) {
+          setLocalMlStatus({
+            available: false,
+            runner: null,
+            device: "cpu",
+            checked: [],
+            detail: errorMessage(caught),
+          });
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const localMode = isLocalMlMode(mode);
+  const localRuntimeReady = !localMode || !hasTauriRuntime() || localMlStatus?.available === true;
+  const canRun = inputPath.length > 0 && outputDir.length > 0 && !isExtracting && localRuntimeReady;
   const selectedMode = modeDetails[mode];
   const duration = analysis ? formatDuration(analysis.durationSeconds) : "--:--";
 
@@ -314,7 +354,7 @@ function App() {
 
           <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
             <Play size={18} fill="currentColor" />
-            <span>{isExtracting ? "Extracting" : "Run extraction"}</span>
+            <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
           </button>
         </aside>
 
@@ -408,6 +448,9 @@ function App() {
               <Gauge size={17} />
               <h2>Method</h2>
             </div>
+            <div className={`engine-status ${localRuntimeReady ? "" : "engine-status-warning"}`}>
+              <span>{engineStatusText(mode, localMlStatus)}</span>
+            </div>
             <ul>
               {(report?.methodNotes ?? [
                 "Local ML modes run Demucs on-device; no cloud or API calls.",
@@ -443,6 +486,42 @@ function ModeIcon({ mode }: { mode: StemMode }) {
   }
 
   return <Drum size={16} />;
+}
+
+function isLocalMlMode(mode: StemMode) {
+  return mode === "localMlSix" || mode === "localMlFour";
+}
+
+function runButtonText(isExtracting: boolean, localMode: boolean, localRuntimeReady: boolean) {
+  if (isExtracting) {
+    return "Extracting";
+  }
+
+  if (localMode && !localRuntimeReady) {
+    return "Install local ML runtime";
+  }
+
+  return "Run extraction";
+}
+
+function engineStatusText(mode: StemMode, status: LocalMlStatus | null) {
+  if (!isLocalMlMode(mode)) {
+    return "Classic DSP mode runs inside the Rust backend.";
+  }
+
+  if (!hasTauriRuntime()) {
+    return "Web preview; local ML preflight runs inside the Tauri app.";
+  }
+
+  if (!status) {
+    return "Checking local Demucs runtime.";
+  }
+
+  if (status.available) {
+    return `Local ML ready via ${status.runner} on ${status.device}.`;
+  }
+
+  return status.detail;
 }
 
 function compactPath(path: string) {
