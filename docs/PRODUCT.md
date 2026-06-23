@@ -45,7 +45,8 @@ with `npm run build:windows:standalone`.
    - `Classic Vocal + Instrumental`
    - `Classic DSP Layers`
 4. Run extraction with visible progress.
-5. Review the exported stem list and method notes.
+5. Review the exported stem list, audition individual stems, and inspect method
+   notes.
 6. Open the output folder.
 
 ## Stem Modes
@@ -132,6 +133,6 @@ state at a glance.
 - ONNX/Core ML runtime exploration for a leaner native inference path.
 - GPU acceleration and device auto-detection.
 - Batch queues.
-- Stem audition playback inside the app.
+- Playlist-style `Play All` and richer transport controls.
 - Advanced user controls for STFT window, hop, mask sharpness, and filter spans.
 - Signing, notarization, autoupdate, and model download/signature management.
