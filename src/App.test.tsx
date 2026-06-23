@@ -47,6 +47,24 @@ describe("YES Stems app", () => {
     expect(screen.queryByText(/Welcome to Tauri/i)).not.toBeInTheDocument();
   });
 
+  it("renders the pro workstation sections", () => {
+    render(<App />);
+
+    for (const heading of [
+      "Source",
+      "Output",
+      "Extraction Mode",
+      "Advanced",
+      "Analysis",
+      "Processing",
+      "Results",
+    ]) {
+      expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    }
+
+    expect(screen.getByText("6 expected stems")).toBeInTheDocument();
+  });
+
   it("defaults to local ML six-stem expectations", () => {
     render(<App />);
 
