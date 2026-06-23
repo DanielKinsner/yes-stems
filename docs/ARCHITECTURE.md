@@ -1,7 +1,7 @@
 # Architecture
 
-YES Stems is a Tauri desktop app with a React/TypeScript frontend and a Rust
-audio backend.
+YES Stems is a Tauri desktop app with a React/TypeScript frontend, a Rust
+orchestration backend, a classic DSP engine, and a local ML runner boundary.
 
 ## Frontend
 
@@ -14,11 +14,36 @@ audio backend.
 ## Rust Backend
 
 - `src-tauri/src/audio_io.rs` decodes audio and writes WAV stems.
-- `src-tauri/src/separation.rs` owns STFT, masks, reconstruction, and reports.
+- `src-tauri/src/separation.rs` owns classic STFT masks, reconstruction, and
+  reports.
+- `src-tauri/src/ml_engine.rs` owns the local Demucs invocation boundary and
+  collects emitted stem files.
 - `src-tauri/src/commands.rs` exposes Tauri commands.
 - `src-tauri/src/types.rs` defines shared request/response contracts.
 
-## Signal Flow
+## Local ML Signal Flow
+
+1. Decode source metadata locally for report consistency.
+2. Create an output directory for the selected track.
+3. Invoke a local Demucs runtime:
+   - `Local ML 4 Stems` -> `htdemucs`
+   - `Local ML 6 Stems` -> `htdemucs_6s`
+4. Search the Demucs work directory for the expected WAV stems.
+5. Copy stems into the app output directory.
+6. Decode the written stems locally to report frames, peaks, and paths.
+7. Return a report with method notes and `reconstruction_error = -1.0` to mark
+   model output rather than a classic mask partition diagnostic.
+
+Runtime selection:
+
+- `YES_STEMS_DEMUCS` can point at a bundled or manually installed Demucs
+  executable.
+- `YES_STEMS_DEMUCS_DEVICE` defaults to `cpu` and can be set to a Demucs device
+  value such as `cuda` when the local runtime supports it.
+- If no override is present, the backend tries `demucs`, `python -m demucs`,
+  then `py -m demucs`.
+
+## Classic DSP Signal Flow
 
 1. Decode source audio with Symphonia.
 2. Normalize to finite `f32` PCM, preserving source channels.
@@ -32,8 +57,9 @@ audio backend.
 
 ## Product Honesty
 
-The backend exports useful layers rather than pretending to recover original
-multitracks. The UI and docs must keep that language intact.
+Local ML modes export named model targets, not guaranteed studio multitracks.
+Classic DSP modes export useful layers rather than exact instrument stems. The
+UI and docs must keep both distinctions intact.
 
 ## Verification Lanes
 
