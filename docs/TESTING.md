@@ -72,6 +72,12 @@ npm run screenshot:ui
 The capture script uses local Chrome or Edge at `1280x800` and updates
 `docs/screenshots/yes-stems-installed-app.png`.
 
+Verify the committed screenshot dimensions:
+
+```powershell
+npm run verify:screenshot
+```
+
 ## Backend Coverage
 
 Rust tests should cover:
