@@ -359,6 +359,7 @@ describe("YES Stems app", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
 
+    await screen.findByText("1 wav stems");
     const playButton = await screen.findByRole("button", { name: "Play Vocals" });
     fireEvent.click(playButton);
 
@@ -443,6 +444,7 @@ describe("YES Stems app", () => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
+    await screen.findByText("2 wav stems");
     fireEvent.click(await screen.findByRole("button", { name: "Play All" }));
 
     await waitFor(() => {

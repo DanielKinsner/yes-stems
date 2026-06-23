@@ -682,11 +682,6 @@ function App() {
               disabledReason="Only classic DSP modes use this control."
               onChange={setArtifactReduction}
             />
-            <p className="control-note">
-              {localMode
-                ? "Local ML uses fixed Demucs model settings; DSP tuning is unavailable."
-                : "DSP tuning changes mask strength and smoothing for the next extraction."}
-            </p>
           </section>
         </aside>
 
@@ -859,13 +854,13 @@ function App() {
                   <button
                     className="icon-button stem-play-button"
                     type="button"
-                    aria-label={`${auditionPath === stem.path ? "Pause" : "Play"} ${stem.name}`}
+                    aria-label={`${stem.path && auditionPath === stem.path ? "Pause" : "Play"} ${stem.name}`}
                     disabled={!stem.path || !hasTauriRuntime()}
                     onClick={() => {
                       void toggleAudition(stem);
                     }}
                   >
-                    {auditionPath === stem.path ? <Pause size={15} /> : <Play size={15} fill="currentColor" />}
+                    {stem.path && auditionPath === stem.path ? <Pause size={15} /> : <Play size={15} fill="currentColor" />}
                   </button>
                 </article>
               ))}
