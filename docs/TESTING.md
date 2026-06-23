@@ -44,6 +44,16 @@ This first stages `src-tauri/resources/demucs-runtime/` with a PyInstaller
 `demucs.exe` sidecar and the `htdemucs` / `htdemucs_6s` checkpoints, then runs
 the normal Tauri bundle lane.
 
+After installing the NSIS bundle, run:
+
+```powershell
+.\scripts\smoke-installed-demucs.ps1
+```
+
+This finds the installed app through the Windows uninstall registry, runs the
+installed bundled Demucs runtime against a generated synthetic WAV, and verifies
+the expected 4-stem and 6-stem files.
+
 ## Backend Coverage
 
 Rust tests should cover:
@@ -110,6 +120,9 @@ Latest local smoke evidence:
   `TORCH_HOME` pointed at the staged bundled model cache.
 - `npm run build:windows` produced MSI and NSIS bundles with the staged runtime
   present.
+- A clean NSIS install to `%LOCALAPPDATA%\YES Stems` included
+  `demucs-runtime\demucs.exe`, both checkpoint files, and passed
+  `scripts/smoke-installed-demucs.ps1`.
 
 ## Local Audio
 
