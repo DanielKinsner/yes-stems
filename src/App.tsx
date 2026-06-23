@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -10,12 +10,10 @@ import {
   BrainCircuit,
   CheckCircle2,
   ChevronDown,
-  Cpu,
   Drum,
   FileAudio,
   FolderOpen,
   FolderOutput,
-  HardDrive,
   Layers3,
   Mic2,
   Music2,
@@ -23,7 +21,6 @@ import {
   Play,
   Settings,
   Square,
-  Volume2,
   Zap,
 } from "lucide-react";
 import "./App.css";
@@ -395,11 +392,10 @@ function App() {
   }
 
   async function revealOutput() {
-    if (report?.outputDir) {
+    if (report?.outputDir && hasTauriRuntime()) {
       await openPath(report.outputDir);
       return;
     }
-
   }
 
   async function exportAll() {
@@ -856,11 +852,6 @@ function App() {
           <section className="module results-module">
             <div className="module-bar">
               <SectionHeading step="5" title="Results" />
-              <div className="preview-control">
-                <span>Preview</span>
-                <Volume2 size={15} />
-                <i aria-hidden="true" />
-              </div>
             </div>
 
             <div className="result-stats">
@@ -923,7 +914,12 @@ function App() {
                 {isPlayingAll ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
                 <span>{isPlayingAll ? "Stop All" : "Play All"}</span>
               </button>
-              <button className="secondary-action" type="button" onClick={revealOutput} disabled={!report}>
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={revealOutput}
+                disabled={!report || !hasTauriRuntime()}
+              >
                 <FolderOpen size={16} />
                 <span>Working Files</span>
               </button>
@@ -942,8 +938,6 @@ function App() {
       </section>
 
       <footer className="status-bar">
-        <MeterBar icon={<Cpu size={13} />} label="CPU" value="24%" />
-        <MeterBar icon={<HardDrive size={13} />} label="RAM" value="3.1 GB" />
         <span>{isExtracting ? "Processing" : progress.phase === "complete" ? "Complete" : "Ready"}</span>
         <span>{engineStatusText(mode, localMlStatus)}</span>
         <span className={localRuntimeReady ? "gpu-ready" : "gpu-warning"}>
@@ -1023,16 +1017,6 @@ function CheckboxRow({
         onChange={(event) => onChange(event.currentTarget.checked)}
       />
     </label>
-  );
-}
-
-function MeterBar({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="meter-bar">
-      {icon}
-      <span>{label}: {value}</span>
-      <i aria-hidden="true" />
-    </div>
   );
 }
 

@@ -74,10 +74,10 @@ button {
 .run-state,
 .section-heading,
 .module-bar,
-.preview-control,
 .transport-actions,
 .result-actions,
-.meter-bar {
+.gpu-ready,
+.gpu-warning {
   display: flex;
   align-items: center;
 }
@@ -886,22 +886,6 @@ p {
   background: #121a26;
 }
 
-.preview-control {
-  gap: 8px;
-  color: #c9d2ce;
-  font-size: 11px;
-  line-height: 13px;
-  font-weight: 680;
-}
-
-.preview-control i {
-  width: 78px;
-  height: 4px;
-  border-radius: 999px;
-  background:
-    linear-gradient(90deg, var(--accent) 0 62%, #3b4a5e 62% 100%);
-}
-
 .result-stats {
   display: flex;
   flex-wrap: wrap;
@@ -1050,23 +1034,8 @@ p {
   margin-left: auto;
 }
 
-.meter-bar {
-  gap: 7px;
-  min-width: 104px;
-}
-
-.meter-bar i {
-  width: 42px;
-  height: 6px;
-  border-radius: 1px;
-  background:
-    linear-gradient(90deg, var(--accent) 0 32%, transparent 32% 100%),
-    #263449;
-}
-
 .gpu-ready,
 .gpu-warning {
-  display: inline-flex;
   gap: 5px;
   align-items: center;
 }
