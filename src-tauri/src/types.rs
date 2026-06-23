@@ -36,7 +36,6 @@ impl StemMode {
 #[serde(rename_all = "camelCase")]
 pub struct ExtractRequest {
     pub input_path: String,
-    pub output_dir: String,
     pub mode: StemMode,
     pub tuning: Option<SeparationTuning>,
 }

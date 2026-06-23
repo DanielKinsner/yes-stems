@@ -58,7 +58,7 @@ describe("YES Stems app", () => {
 
     for (const heading of [
       "Source",
-      "Output",
+      "Export",
       "Extraction Mode",
       "Advanced",
       "Analysis",
@@ -101,8 +101,7 @@ describe("YES Stems app", () => {
 
   it("runs extraction through Tauri commands and renders the report", async () => {
     tauriMocks.open
-      .mockResolvedValueOnce("C:\\music\\song.wav")
-      .mockResolvedValueOnce("C:\\renders");
+      .mockResolvedValueOnce("C:\\music\\song.wav");
     tauriMocks.invoke
       .mockResolvedValueOnce({
         fileName: "song",
@@ -146,7 +145,6 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("song");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
@@ -161,7 +159,6 @@ describe("YES Stems app", () => {
     expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
       request: {
         inputPath: "C:\\music\\song.wav",
-        outputDir: "C:\\renders",
         mode: "localMlSix",
         tuning: {
           aggressiveness: 5,
@@ -174,7 +171,6 @@ describe("YES Stems app", () => {
   it("replaces a finished source and clears stale extraction results", async () => {
     tauriMocks.open
       .mockResolvedValueOnce("C:\\music\\first.wav")
-      .mockResolvedValueOnce("C:\\renders")
       .mockResolvedValueOnce("C:\\music\\second.wav");
     tauriMocks.invoke
       .mockResolvedValueOnce({
@@ -221,7 +217,6 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("first");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });
@@ -237,8 +232,7 @@ describe("YES Stems app", () => {
 
   it("passes classic DSP tuning from enabled advanced sliders", async () => {
     tauriMocks.open
-      .mockResolvedValueOnce("C:\\music\\song.wav")
-      .mockResolvedValueOnce("C:\\renders");
+      .mockResolvedValueOnce("C:\\music\\song.wav");
     tauriMocks.invoke
       .mockResolvedValueOnce({
         fileName: "song",
@@ -270,7 +264,6 @@ describe("YES Stems app", () => {
     fireEvent.change(screen.getByLabelText("Artifact Reduction"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("song");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });
@@ -280,7 +273,6 @@ describe("YES Stems app", () => {
     expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
       request: {
         inputPath: "C:\\music\\song.wav",
-        outputDir: "C:\\renders",
         mode: "vocalInstrumental",
         tuning: {
           aggressiveness: 8,
@@ -288,6 +280,42 @@ describe("YES Stems app", () => {
         },
       },
     });
+  });
+
+  it("updates timeline selection without pointer capture APIs", async () => {
+    tauriMocks.open.mockResolvedValueOnce("C:\\music\\song.wav");
+    tauriMocks.invoke.mockResolvedValueOnce({
+      fileName: "song",
+      sampleRate: 44_100,
+      channels: 2,
+      frames: 441_000,
+      durationSeconds: 10,
+      peak: 0.8,
+      waveformPeaks: [0.1, 0.8, 0.4, 0.7],
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
+    await screen.findByText("song");
+    const overview = screen.getByLabelText("Audio overview selection");
+    overview.getBoundingClientRect = vi.fn(() => ({
+      bottom: 100,
+      height: 100,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent.pointerDown(overview, { clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(overview, { clientX: 60, pointerId: 1 });
+    fireEvent.pointerUp(overview, { clientX: 60, pointerId: 1 });
+
+    expect(screen.getByText("0:01.00 - 0:06.00")).toBeInTheDocument();
   });
 
   it("auditions rendered stems through Tauri asset audio", async () => {
@@ -308,8 +336,7 @@ describe("YES Stems app", () => {
     vi.stubGlobal("Audio", AudioMock);
 
     tauriMocks.open
-      .mockResolvedValueOnce("C:\\music\\song.wav")
-      .mockResolvedValueOnce("C:\\renders");
+      .mockResolvedValueOnce("C:\\music\\song.wav");
     tauriMocks.invoke
       .mockResolvedValueOnce({
         available: true,
@@ -353,7 +380,6 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("song");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });
@@ -387,8 +413,7 @@ describe("YES Stems app", () => {
     vi.stubGlobal("Audio", AudioMock);
 
     tauriMocks.open
-      .mockResolvedValueOnce("C:\\music\\song.wav")
-      .mockResolvedValueOnce("C:\\renders");
+      .mockResolvedValueOnce("C:\\music\\song.wav");
     tauriMocks.invoke
       .mockResolvedValueOnce({
         available: true,
@@ -439,7 +464,6 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("song");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });
@@ -461,7 +485,6 @@ describe("YES Stems app", () => {
 
     tauriMocks.open
       .mockResolvedValueOnce("C:\\music\\song.wav")
-      .mockResolvedValueOnce("C:\\renders")
       .mockResolvedValueOnce("D:\\exports");
     tauriMocks.invoke.mockImplementation((command: string, args?: unknown) => {
       if (command === "check_local_ml_runtime") {
@@ -553,7 +576,6 @@ describe("YES Stems app", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
     await screen.findByText("song");
-    fireEvent.click(screen.getByRole("button", { name: /Choose output folder/i }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
     });

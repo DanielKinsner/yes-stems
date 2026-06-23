@@ -38,20 +38,22 @@ with `npm run build:windows:standalone`.
 ## Primary Workflow
 
 1. Pick a source audio file.
-2. Pick an output folder.
-3. Choose a mode:
+2. Choose a mode:
    - `Local ML 6 Stems`
    - `Local ML 4 Stems`
    - `Classic Vocal + Instrumental`
    - `Classic DSP Layers`
-4. For classic DSP modes, optionally adjust aggressiveness and artifact
+3. For classic DSP modes, optionally adjust aggressiveness and artifact
    reduction before running extraction. Local ML modes keep these controls
    disabled because Demucs does not consume those product-level settings.
-5. Run extraction with visible progress.
-6. Review the exported stem list, audition individual stems, play the rendered
+4. Run extraction with visible progress. Extraction writes to an app-managed
+   working folder so the user does not need to choose an output destination up
+   front.
+5. Review the exported stem list, audition individual stems, play the rendered
    stems in sequence, and inspect method
    notes.
-7. Open the output folder.
+6. Export All asks for the user-facing output folder and copies the finished
+   WAV stems there.
 
 ## Stem Modes
 

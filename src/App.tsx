@@ -127,7 +127,6 @@ const frequencyTicks = ["20k", "10k", "5k", "2k", "1k", "500", "100", "20"];
 
 function App() {
   const [inputPath, setInputPath] = useState("");
-  const [outputDir, setOutputDir] = useState("");
   const [mode, setMode] = useState<StemMode>("localMlSix");
   const [aggressiveness, setAggressiveness] = useState(5);
   const [artifactReduction, setArtifactReduction] = useState(5);
@@ -151,6 +150,7 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playAllTokenRef = useRef(0);
   const selectionAnchorRef = useRef(0);
+  const timelineDraggingRef = useRef(false);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -209,7 +209,7 @@ function App() {
 
   const localMode = isLocalMlMode(mode);
   const localRuntimeReady = !localMode || !hasTauriRuntime() || localMlStatus?.available === true;
-  const canRun = inputPath.length > 0 && outputDir.length > 0 && !isExtracting && localRuntimeReady;
+  const canRun = inputPath.length > 0 && !isExtracting && localRuntimeReady;
   const selectedMode = modeDetails[mode];
   const duration = analysis ? formatDuration(analysis.durationSeconds) : "--:--";
   const progressPercent = Math.round(progress.progress * 100);
@@ -281,7 +281,7 @@ function App() {
       lines.push(`00:00:04 Error: ${error}`);
     } else if (report) {
       lines.push(`00:00:04 Complete: wrote ${report.stems.length} stems`);
-      lines.push(`00:00:05 Output: ${report.outputDir}`);
+      lines.push(`00:00:05 Working files: ${report.outputDir}`);
       // Keep completion notes visible without turning the console into a report viewer.
       for (const note of report.methodNotes.slice(0, 3)) {
         lines.push(`00:00:06 Note: ${note}`);
@@ -289,7 +289,7 @@ function App() {
     } else if (isExtracting) {
       lines.push(`00:00:04 Processing: ${progress.detail} ${progressPercent}%`);
     } else {
-      lines.push(`00:00:04 Ready: choose a source and output folder`);
+      lines.push(`00:00:04 Ready: choose a source track`);
     }
 
     return lines;
@@ -346,29 +346,6 @@ function App() {
     }
   }
 
-  async function chooseOutput() {
-    if (isExtracting) {
-      return;
-    }
-
-    setError("");
-    setExportError("");
-    setExportMessage("");
-    const selected = await open({
-      multiple: false,
-      directory: true,
-    });
-
-    if (typeof selected === "string") {
-      setReport(null);
-      stopAudition();
-      setOutputDir(selected);
-      setProgress((current) =>
-        current.phase === "complete" ? { phase: "ready", progress: 0, detail: "Output folder changed" } : current,
-      );
-    }
-  }
-
   function resetExtractionState() {
     stopAudition();
     setReport(null);
@@ -394,7 +371,6 @@ function App() {
       const nextReport = await invoke<ExtractionReport>("extract_stems", {
         request: {
           inputPath,
-          outputDir,
           mode,
           tuning: {
             aggressiveness,
@@ -418,9 +394,6 @@ function App() {
       return;
     }
 
-    if (outputDir) {
-      await openPath(outputDir);
-    }
   }
 
   async function exportAll() {
@@ -582,12 +555,12 @@ function App() {
 
     const value = timelineRatioFromEvent(event);
     selectionAnchorRef.current = value;
+    timelineDraggingRef.current = true;
     setTimelineSelection({ start: value, end: value });
-    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handleTimelinePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!analysis || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+    if (!analysis || !timelineDraggingRef.current) {
       return;
     }
 
@@ -598,11 +571,11 @@ function App() {
   }
 
   function handleTimelinePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!analysis || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+    if (!analysis || !timelineDraggingRef.current) {
       return;
     }
 
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    timelineDraggingRef.current = false;
     setTimelineSelection((current) => {
       if (Math.abs(current.start - current.end) < 0.01) {
         const point = timelineRatioFromEvent(event);
@@ -611,6 +584,10 @@ function App() {
 
       return current;
     });
+  }
+
+  function handleTimelinePointerCancel() {
+    timelineDraggingRef.current = false;
   }
 
   return (
@@ -665,11 +642,14 @@ function App() {
           </section>
 
           <section className="module output-module">
-            <SectionHeading step="2" title="Output" />
-            <button className="path-field" type="button" onClick={chooseOutput} disabled={isExtracting}>
-              <span>{outputDir ? compactPath(outputDir) : "Choose output folder"}</span>
+            <SectionHeading step="2" title="Export" />
+            <div className="export-contract">
               <FolderOutput size={16} />
-            </button>
+              <div>
+                <strong>{report ? "Ready to export" : "Choose destination later"}</strong>
+                <span>{report ? "Use Export All to pick a folder." : "Extraction uses an internal working folder."}</span>
+              </div>
+            </div>
             <div className="file-naming-row">
               <span>File naming</span>
               <button type="button" title="Exports currently use the source track name." disabled>
@@ -751,6 +731,8 @@ function App() {
               onPointerDown={handleTimelinePointerDown}
               onPointerMove={handleTimelinePointerMove}
               onPointerUp={handleTimelinePointerUp}
+              onPointerCancel={handleTimelinePointerCancel}
+              onPointerLeave={handleTimelinePointerCancel}
             >
               <div className="wave-bars" aria-hidden="true">
                 {waveformLevels.map((height, index) => (
@@ -940,9 +922,9 @@ function App() {
                 {isPlayingAll ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
                 <span>{isPlayingAll ? "Stop All" : "Play All"}</span>
               </button>
-              <button className="secondary-action" type="button" onClick={revealOutput} disabled={!outputDir && !report}>
+              <button className="secondary-action" type="button" onClick={revealOutput} disabled={!report}>
                 <FolderOpen size={16} />
-                <span>Open Output</span>
+                <span>Working Files</span>
               </button>
               <button
                 className="export-action"

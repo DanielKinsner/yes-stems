@@ -7,7 +7,8 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 
 - `src/App.tsx` composes the extraction workspace.
 - `src/App.css` owns the design system and responsive layout.
-- The UI uses native Tauri dialogs to choose the input file and output folder.
+- The UI uses native Tauri dialogs to choose the input file and, after
+  extraction, the export destination.
 - The UI invokes Rust commands for source analysis and extraction.
 - Backend progress is emitted as `stems://progress` events.
 - Source analysis returns compact waveform peak buckets for the interactive
@@ -33,12 +34,12 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 ## Local ML Signal Flow
 
 1. Decode source metadata locally for report consistency.
-2. Create an output directory for the selected track.
+2. Create an app-managed working output directory for the selected track.
 3. Invoke a local Demucs runtime:
    - `Local ML 4 Stems` -> `htdemucs`
    - `Local ML 6 Stems` -> `htdemucs_6s`
 4. Search the Demucs work directory for the expected WAV stems.
-5. Copy stems into the app output directory.
+5. Copy stems into the app-managed working output directory.
 6. Decode the written stems locally to report frames, peaks, and paths.
 7. Return a report with method notes and `reconstruction_error = -1.0` to mark
    model output rather than a classic mask partition diagnostic.
@@ -92,7 +93,8 @@ Packaging seam:
      rough mask edges
 6. Apply masks to each channel's original complex spectrum.
 7. Reconstruct stems by inverse FFT and overlap-add.
-8. Write 24-bit WAV files with source sample rate and channel count.
+8. Write 24-bit WAV files with source sample rate and channel count into the
+   app-managed working output directory.
 9. Return a report with duration, stem paths, method notes, and reconstruction
    error.
 

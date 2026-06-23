@@ -1,6 +1,7 @@
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -37,9 +38,9 @@ pub async fn extract_stems(
     request: ExtractRequest,
 ) -> Result<ExtractionReport, String> {
     let resource_dir = app.path().resource_dir().ok();
+    let managed_output_root = managed_working_root(app.path().app_data_dir().ok().as_deref());
     tauri::async_runtime::spawn_blocking(move || {
         let input_path = PathBuf::from(request.input_path);
-        let output_dir = PathBuf::from(request.output_dir);
         let mode = request.mode;
         let tuning = request.tuning.unwrap_or_default().clamped();
         let progress_app = app.clone();
@@ -58,7 +59,7 @@ pub async fn extract_stems(
         if mode.is_local_ml() {
             ml_engine::extract_track_to_directory(
                 &input_path,
-                &output_dir,
+                &managed_output_root,
                 mode,
                 resource_dir,
                 emit_progress,
@@ -67,7 +68,7 @@ pub async fn extract_stems(
         } else {
             separation::extract_track_to_directory(
                 &input_path,
-                &output_dir,
+                &managed_output_root,
                 mode,
                 tuning,
                 emit_progress,
@@ -77,6 +78,14 @@ pub async fn extract_stems(
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+fn managed_working_root(app_data_dir: Option<&Path>) -> PathBuf {
+    app_data_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| env::temp_dir().join("yes-stems"))
+        .join("working-stems")
+        .join(timestamp_millis().to_string())
 }
 
 #[tauri::command]
@@ -138,6 +147,12 @@ fn same_file(source: &Path, target: &Path) -> bool {
         (Ok(source), Ok(target)) => source == target,
         _ => false,
     }
+}
+
+fn timestamp_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
 }
 
 #[cfg(test)]
@@ -204,5 +219,14 @@ mod tests {
 
         assert_eq!(result.exported_files, 1);
         assert_eq!(PathBuf::from(result.export_dir), export_dir);
+    }
+
+    #[test]
+    fn managed_working_root_is_not_user_destination() {
+        let app_data = PathBuf::from("app-data");
+        let root = managed_working_root(Some(&app_data));
+
+        assert!(root.starts_with(app_data.join("working-stems")));
+        assert_ne!(root, app_data.join("working-stems"));
     }
 }

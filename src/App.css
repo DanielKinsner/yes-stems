@@ -273,7 +273,8 @@ p {
   gap: 12px;
 }
 
-.source-file {
+.source-file,
+.export-contract {
   min-height: 34px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -287,11 +288,13 @@ p {
   background: #242928;
 }
 
-.source-file svg {
+.source-file svg,
+.export-contract svg {
   color: #d5dfdc;
 }
 
 .source-file strong,
+.export-contract strong,
 .process-title-row strong {
   display: block;
   min-width: 0;
@@ -305,6 +308,7 @@ p {
 }
 
 .source-file span,
+.export-contract span,
 .process-title-row span,
 .example-name,
 .stem-row small {
