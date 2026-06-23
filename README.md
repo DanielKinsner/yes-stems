@@ -13,6 +13,7 @@ sending audio to a cloud service or frontier-model API.
 ## Common Commands
 
 ```powershell
+npm run verify:ui
 npm run verify:frontend
 npm run verify:rust
 npm run build:windows
