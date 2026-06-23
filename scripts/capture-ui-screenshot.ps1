@@ -41,7 +41,21 @@ function Remove-TempProfile {
   Remove-Item -LiteralPath $target -Recurse -Force
 }
 
+function Test-PreviewUrl {
+  param([string]$Url)
+
+  try {
+    $response = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 5
+    if ($response.StatusCode -ge 400) {
+      throw "Preview server returned HTTP $($response.StatusCode)."
+    }
+  } catch {
+    throw "Preview URL is not reachable: $Url. Start it with npm run preview:local."
+  }
+}
+
 $browser = Find-Browser
+Test-PreviewUrl -Url $Url
 $outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
 $outputDir = Split-Path -Parent $outputPath
 if ($outputDir) {
