@@ -84,3 +84,4 @@ Read the active project docs first:
 - `docs/RESEARCH.md`
 - `docs/ARCHITECTURE.md`
 - `docs/TESTING.md`
+- `docs/RELEASE.md`
