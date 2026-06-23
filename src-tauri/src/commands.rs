@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
     audio_io, ml_engine, separation,
@@ -18,8 +18,9 @@ pub async fn analyze_track(input_path: String) -> Result<TrackAnalysis, String> 
 }
 
 #[tauri::command]
-pub async fn check_local_ml_runtime() -> Result<LocalMlStatus, String> {
-    tauri::async_runtime::spawn_blocking(ml_engine::check_runtime)
+pub async fn check_local_ml_runtime(app: AppHandle) -> Result<LocalMlStatus, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    tauri::async_runtime::spawn_blocking(move || ml_engine::check_runtime(resource_dir))
         .await
         .map_err(|error| error.to_string())
 }
@@ -29,6 +30,7 @@ pub async fn extract_stems(
     app: AppHandle,
     request: ExtractRequest,
 ) -> Result<ExtractionReport, String> {
+    let resource_dir = app.path().resource_dir().ok();
     tauri::async_runtime::spawn_blocking(move || {
         let input_path = PathBuf::from(request.input_path);
         let output_dir = PathBuf::from(request.output_dir);
@@ -47,8 +49,14 @@ pub async fn extract_stems(
         };
 
         if mode.is_local_ml() {
-            ml_engine::extract_track_to_directory(&input_path, &output_dir, mode, emit_progress)
-                .map_err(|error| error.to_string())
+            ml_engine::extract_track_to_directory(
+                &input_path,
+                &output_dir,
+                mode,
+                resource_dir,
+                emit_progress,
+            )
+            .map_err(|error| error.to_string())
         } else {
             separation::extract_track_to_directory(&input_path, &output_dir, mode, emit_progress)
                 .map_err(|error| error.to_string())

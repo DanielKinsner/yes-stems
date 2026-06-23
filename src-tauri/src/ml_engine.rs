@@ -21,7 +21,7 @@ pub enum MlEngineError {
     #[error("could not prepare local ML output directory: {0}")]
     OutputDirectory(std::io::Error),
     #[error(
-        "local ML extraction requires Demucs. Tried {0}. Install Demucs on PATH, run through python -m demucs, or set YES_STEMS_DEMUCS to a bundled executable path."
+        "local ML extraction requires Demucs. Tried {0}. Install the bundled runtime, use the repo-local .venv-demucs runtime, install Demucs on PATH, run through python -m demucs, or set YES_STEMS_DEMUCS to an executable path."
     )]
     RuntimeUnavailable(String),
     #[error(
@@ -56,6 +56,7 @@ struct MlStemSpec {
 struct DemucsRunner {
     program: OsString,
     args_prefix: Vec<OsString>,
+    envs: Vec<(OsString, OsString)>,
     label: String,
 }
 
@@ -63,6 +64,7 @@ pub fn extract_track_to_directory<F>(
     input_path: &Path,
     output_root: &Path,
     mode: StemMode,
+    resource_dir: Option<PathBuf>,
     mut progress: F,
 ) -> Result<ExtractionReport, MlEngineError>
 where
@@ -85,7 +87,7 @@ where
         0.08,
         format!("starting local Demucs model {model}"),
     );
-    let output = run_demucs(model, input_path, &work_dir)?;
+    let output = run_demucs(model, input_path, &work_dir, resource_dir.as_deref())?;
     if !output.status.success() {
         return Err(MlEngineError::RuntimeFailed {
             runner: output.runner,
@@ -139,11 +141,11 @@ where
     })
 }
 
-pub fn check_runtime() -> LocalMlStatus {
+pub fn check_runtime(resource_dir: Option<PathBuf>) -> LocalMlStatus {
     let device = demucs_device();
     let mut checked = Vec::new();
 
-    for runner in demucs_runners() {
+    for runner in demucs_runners(resource_dir.as_deref()) {
         checked.push(runner.label.clone());
         match probe_runner(&runner) {
             Ok(output) if output.status.success() => {
@@ -166,7 +168,7 @@ pub fn check_runtime() -> LocalMlStatus {
         runner: None,
         device,
         checked,
-        detail: "Demucs is not available locally. Install Demucs on PATH, use python -m demucs, or set YES_STEMS_DEMUCS to a bundled executable path.".to_string(),
+        detail: "Demucs is not available locally. Install the bundled runtime, use the repo-local .venv-demucs runtime, install Demucs on PATH, use python -m demucs, or set YES_STEMS_DEMUCS to an executable path.".to_string(),
     }
 }
 
@@ -181,9 +183,10 @@ fn run_demucs(
     model: &str,
     input_path: &Path,
     work_dir: &Path,
+    resource_dir: Option<&Path>,
 ) -> Result<DemucsOutput, MlEngineError> {
     let device = demucs_device();
-    let runner = resolve_demucs_runner()?;
+    let runner = resolve_demucs_runner(resource_dir)?;
     match invoke_demucs(&runner, model, &device, input_path, work_dir) {
         Ok(output) => Ok(DemucsOutput {
             status: output.status,
@@ -200,10 +203,10 @@ fn run_demucs(
     }
 }
 
-fn resolve_demucs_runner() -> Result<DemucsRunner, MlEngineError> {
+fn resolve_demucs_runner(resource_dir: Option<&Path>) -> Result<DemucsRunner, MlEngineError> {
     let mut attempted = Vec::new();
 
-    for runner in demucs_runners() {
+    for runner in demucs_runners(resource_dir) {
         attempted.push(runner.label.clone());
         match probe_runner(&runner) {
             Ok(output) if output.status.success() => return Ok(runner),
@@ -222,6 +225,7 @@ fn demucs_device() -> String {
 
 fn probe_runner(runner: &DemucsRunner) -> std::io::Result<Output> {
     let mut command = Command::new(&runner.program);
+    command.envs(runner.envs.iter().cloned());
     command.args(&runner.args_prefix).arg("--help");
     command.output()
 }
@@ -234,6 +238,7 @@ fn invoke_demucs(
     work_dir: &Path,
 ) -> std::io::Result<Output> {
     let mut command = Command::new(&runner.program);
+    command.envs(runner.envs.iter().cloned());
     command.args(&runner.args_prefix);
     command
         .arg("-n")
@@ -247,38 +252,78 @@ fn invoke_demucs(
     command.output()
 }
 
-fn demucs_runners() -> Vec<DemucsRunner> {
+fn demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
     let mut runners = Vec::new();
     if let Some(path) = env::var_os("YES_STEMS_DEMUCS") {
         runners.push(DemucsRunner {
             label: format!("YES_STEMS_DEMUCS={}", path.to_string_lossy()),
             program: path,
             args_prefix: Vec::new(),
+            envs: Vec::new(),
         });
     }
+    runners.extend(bundled_demucs_runners(resource_dir));
     for path in local_demucs_candidates() {
         runners.push(DemucsRunner {
             label: format!("local venv {}", path.display()),
             program: path.into_os_string(),
             args_prefix: Vec::new(),
+            envs: Vec::new(),
         });
     }
     runners.push(DemucsRunner {
         program: OsString::from("demucs"),
         args_prefix: Vec::new(),
+        envs: Vec::new(),
         label: "demucs".to_string(),
     });
     runners.push(DemucsRunner {
         program: OsString::from("python"),
         args_prefix: vec![OsString::from("-m"), OsString::from("demucs")],
+        envs: Vec::new(),
         label: "python -m demucs".to_string(),
     });
     runners.push(DemucsRunner {
         program: OsString::from("py"),
         args_prefix: vec![OsString::from("-m"), OsString::from("demucs")],
+        envs: Vec::new(),
         label: "py -m demucs".to_string(),
     });
     runners
+}
+
+fn bundled_demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
+    let Some(resource_dir) = resource_dir else {
+        return Vec::new();
+    };
+    let root = resource_dir.join("demucs-runtime");
+    let torch_home = root.join("torch-cache");
+    let envs = if torch_home.exists() {
+        vec![(OsString::from("TORCH_HOME"), torch_home.into_os_string())]
+    } else {
+        Vec::new()
+    };
+
+    bundled_demucs_candidates(&root)
+        .into_iter()
+        .map(|path| DemucsRunner {
+            label: format!("bundled Demucs {}", path.display()),
+            program: path.into_os_string(),
+            args_prefix: Vec::new(),
+            envs: envs.clone(),
+        })
+        .collect()
+}
+
+fn bundled_demucs_candidates(root: &Path) -> Vec<PathBuf> {
+    [
+        root.join("demucs.exe"),
+        root.join("Scripts").join("demucs.exe"),
+        root.join("bin").join("demucs"),
+    ]
+    .into_iter()
+    .filter(|path| path.exists())
+    .collect()
 }
 
 fn local_demucs_candidates() -> Vec<PathBuf> {
@@ -426,7 +471,7 @@ mod tests {
 
     #[test]
     fn runtime_status_reports_attempted_runners() {
-        let status = check_runtime();
+        let status = check_runtime(None);
 
         assert!(!status.checked.is_empty());
         assert_eq!(status.device, "cpu");
@@ -438,6 +483,28 @@ mod tests {
             local_demucs_candidates()
                 .iter()
                 .all(|candidate| candidate.exists())
+        );
+    }
+
+    #[test]
+    fn bundled_runner_sets_torch_home_when_model_cache_exists() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let runtime_dir = temp_dir.path().join("demucs-runtime");
+        let cache_dir = runtime_dir.join("torch-cache");
+        fs::create_dir_all(&cache_dir).expect("cache dir");
+        let demucs_exe = runtime_dir.join("demucs.exe");
+        fs::write(&demucs_exe, b"").expect("placeholder exe");
+
+        let runners = demucs_runners(Some(temp_dir.path()));
+        let bundled = runners
+            .iter()
+            .find(|runner| runner.label.starts_with("bundled Demucs"))
+            .expect("bundled runner");
+
+        assert_eq!(bundled.program, demucs_exe.into_os_string());
+        assert_eq!(
+            bundled.envs,
+            vec![(OsString::from("TORCH_HOME"), cache_dir.into_os_string())]
         );
     }
 }
