@@ -11,6 +11,7 @@
     "screenshot:ui": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-ui-screenshot.ps1",
     "verify:branch": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/assert-main-branch.ps1",
     "verify:screenshot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ui-screenshot.ps1",
+    "verify:ui": "npm run verify:branch && npm run verify:frontend && npm run verify:screenshot",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:frontend": "npm test && npm run build",
