@@ -97,6 +97,7 @@ UI and docs must keep both distinctions intact.
 - `npm run verify:frontend`
 - `npm run verify:rust`
 - `npm run verify:fast`
+- `npm run verify:screenshot`
 - `npm run build:windows`
 - `npm run build:windows:standalone`
 
