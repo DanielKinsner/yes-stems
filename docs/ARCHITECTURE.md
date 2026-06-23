@@ -10,6 +10,12 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 - The UI uses native Tauri dialogs to choose the input file and output folder.
 - The UI invokes Rust commands for source analysis and extraction.
 - Backend progress is emitted as `stems://progress` events.
+- Source analysis returns compact waveform peak buckets for the interactive
+  overview/selection surface. The overview is audio-derived, while the
+  spectrogram remains a non-interactive visual context panel.
+- Advanced aggressiveness/artifact-reduction controls are enabled only for
+  classic DSP modes. Local ML modes disable them because the Demucs boundary
+  does not safely consume those product-level controls.
 - The desktop workspace is optimized for `1280x800` with a `1120x720`
   minimum window so the setup rail, analysis stage, processing console, and
   results rack remain visible together.
@@ -80,10 +86,14 @@ Packaging seam:
 2. Normalize to finite `f32` PCM, preserving source channels.
 3. Compute a Hann-window STFT with 2048-sample frames and 512-sample hop.
 4. Estimate masks from channel-averaged magnitudes.
-5. Apply masks to each channel's original complex spectrum.
-6. Reconstruct stems by inverse FFT and overlap-add.
-7. Write 24-bit WAV files with source sample rate and channel count.
-8. Return a report with duration, stem paths, method notes, and reconstruction
+5. Apply bounded DSP tuning:
+   - aggressiveness biases foreground/percussive/harmonic masks more strongly
+   - artifact reduction clamps and smooths masks to trade isolation for fewer
+     rough mask edges
+6. Apply masks to each channel's original complex spectrum.
+7. Reconstruct stems by inverse FFT and overlap-add.
+8. Write 24-bit WAV files with source sample rate and channel count.
+9. Return a report with duration, stem paths, method notes, and reconstruction
    error.
 
 ## Product Honesty

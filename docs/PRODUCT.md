@@ -44,10 +44,14 @@ with `npm run build:windows:standalone`.
    - `Local ML 4 Stems`
    - `Classic Vocal + Instrumental`
    - `Classic DSP Layers`
-4. Run extraction with visible progress.
-5. Review the exported stem list, audition individual stems, and inspect method
+4. For classic DSP modes, optionally adjust aggressiveness and artifact
+   reduction before running extraction. Local ML modes keep these controls
+   disabled because Demucs does not consume those product-level settings.
+5. Run extraction with visible progress.
+6. Review the exported stem list, audition individual stems, play the rendered
+   stems in sequence, and inspect method
    notes.
-6. Open the output folder.
+7. Open the output folder.
 
 ## Stem Modes
 
@@ -126,6 +130,11 @@ dashboard. The primary screen should keep setup, analysis, processing, and
 results visible as one workstation so producers can understand the extraction
 state at a glance.
 
+Every visible control must either perform real work or be visibly unavailable
+with honest copy. The current timeline renders audio-derived peak buckets from
+source analysis and supports a simple source-duration selection readout; it is
+not a decorative static waveform.
+
 ## Deferred
 
 - Bundle-size optimization and sidecar hardening.
@@ -133,6 +142,6 @@ state at a glance.
 - ONNX/Core ML runtime exploration for a leaner native inference path.
 - GPU acceleration and device auto-detection.
 - Batch queues.
-- Playlist-style `Play All` and richer transport controls.
+- Cancellable/pausable extraction workers and richer transport controls.
 - Advanced user controls for STFT window, hop, mask sharpness, and filter spans.
 - Signing, notarization, autoupdate, and model download/signature management.
