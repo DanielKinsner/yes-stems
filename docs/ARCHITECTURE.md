@@ -10,6 +10,9 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 - The UI uses native Tauri dialogs to choose the input file and output folder.
 - The UI invokes Rust commands for source analysis and extraction.
 - Backend progress is emitted as `stems://progress` events.
+- The desktop workspace is optimized for `1280x800` with a `1120x720`
+  minimum window so the setup rail, analysis stage, processing console, and
+  results rack remain visible together.
 
 ## Rust Backend
 
