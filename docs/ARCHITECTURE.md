@@ -38,15 +38,17 @@ Runtime selection:
 
 - `YES_STEMS_DEMUCS` can point at a bundled or manually installed Demucs
   executable.
-- If no override is present, the backend checks the repo-local dev runtime at
+- If no override is present, the backend checks the bundled resource runtime at
+  `demucs-runtime\demucs.exe`, then the repo-local dev runtime at
   `.venv-demucs\Scripts\demucs.exe` on Windows or `.venv-demucs/bin/demucs` on
   Unix-like systems.
 - `YES_STEMS_DEMUCS_DEVICE` defaults to `cpu` and can be set to a Demucs device
   value such as `cuda` when the local runtime supports it.
-- After the repo-local runtime, the backend tries `demucs`, `python -m demucs`,
+- After the bundled and repo-local runtimes, the backend tries `demucs`,
+  `python -m demucs`,
   then `py -m demucs`.
 
-Verified dev runtime:
+Verified runtime staging:
 
 - `.venv-demucs/` is ignored by git and can be recreated with
   `scripts/setup-demucs.ps1`.
@@ -55,14 +57,19 @@ Verified dev runtime:
 - `soundfile` provides the WAV writer backend for the pinned torchaudio stack.
   Newer torchaudio releases may require TorchCodec plus shared FFmpeg DLLs on
   Windows and should be revalidated before changing the pin.
-- Demucs model weights are downloaded by Demucs into the local Torch cache on
-  first use. They are not committed to the repo.
+- `scripts/build-demucs-sidecar.ps1` uses PyInstaller to build a standalone
+  `demucs.exe` sidecar from the pinned venv, stages it into
+  `src-tauri/resources/demucs-runtime/`, and stages the `htdemucs` and
+  `htdemucs_6s` weights into `torch-cache/hub/checkpoints`.
+- The Tauri bundle maps `src-tauri/resources/demucs-runtime/` to the installed
+  resource directory as `demucs-runtime/`.
 
 Packaging seam:
 
-- The current code can call an installed Demucs executable. A consumer-ready
-  installer still needs an explicit bundled sidecar/model strategy or a move to
-  an embedded runtime such as ONNX Runtime/Core ML.
+- The current Windows standalone path packages a PyInstaller sidecar and model
+  weights. Future optimization work should reduce bundle size, review bundled
+  weight licensing/provenance for commercial distribution, and consider ONNX
+  Runtime/Core ML for a leaner native inference path.
 
 ## Classic DSP Signal Flow
 
@@ -88,6 +95,8 @@ UI and docs must keep both distinctions intact.
 - `npm run verify:rust`
 - `npm run verify:fast`
 - `npm run build:windows`
+- `npm run build:windows:standalone`
 
-`build:windows` is a packaging lane and may require platform bundling
-dependencies. It should be run before treating a binary release as ready.
+`build:windows:standalone` stages the Demucs sidecar and model weights before
+running the Tauri packaging lane. It should be run before treating a local-ML
+Windows binary release as ready.

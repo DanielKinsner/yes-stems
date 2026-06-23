@@ -8,10 +8,10 @@ runner boundary because Demucs is mature, local, and supports both 4-stem
 vocals/drums/bass/other extraction and an experimental 6-stem model with guitar
 and piano.
 
-Implementation note: the current dev checkout uses a pinned repo-local Demucs
-environment (`demucs==4.0.1`, `torch==2.5.1`, `torchaudio==2.5.1`,
-`soundfile==0.14.0`) rather than a cloud service. This is working local ML, but
-not yet a bundled consumer sidecar.
+Implementation note: the current checkout uses a pinned Demucs environment
+(`demucs==4.0.1`, `torch==2.5.1`, `torchaudio==2.5.1`, `soundfile==0.14.0`)
+rather than a cloud service. Windows standalone builds can package that stack as
+a PyInstaller sidecar with the `htdemucs` and `htdemucs_6s` model weights.
 
 The classic DSP engine remains valuable as a deterministic fallback and as a
 small, inspectable baseline, but it should not be the main product promise for

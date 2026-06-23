@@ -32,9 +32,25 @@ The local ML modes map to:
 - `Local ML 6 Stems` -> Demucs `htdemucs_6s`: vocals, drums, bass, guitar,
   piano, other
 
-The first run downloads model weights into the local Torch cache. Audio stays
-local. The packaged installer does not yet bundle Python, Demucs, or model
-weights; that sidecar packaging step is still deferred.
+The first dev run downloads model weights into the local Torch cache. Audio
+stays local.
+
+Build a standalone Windows installer with the bundled Demucs sidecar and model
+weights:
+
+```powershell
+npm run build:demucs-sidecar
+npm run build:windows
+```
+
+The one-step command is:
+
+```powershell
+npm run build:windows:standalone
+```
+
+The staged sidecar lives under `src-tauri/resources/demucs-runtime/` and is
+ignored by git except for `.gitkeep`.
 
 Read the active project docs first:
 

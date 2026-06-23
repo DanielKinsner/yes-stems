@@ -33,6 +33,17 @@ npm run build:windows
 This invokes `tauri build` and should produce local bundle artifacts under
 `src-tauri/target/release/bundle/`.
 
+For a standalone Windows build that includes the local Demucs sidecar and model
+weights, run:
+
+```powershell
+npm run build:windows:standalone
+```
+
+This first stages `src-tauri/resources/demucs-runtime/` with a PyInstaller
+`demucs.exe` sidecar and the `htdemucs` / `htdemucs_6s` checkpoints, then runs
+the normal Tauri bundle lane.
+
 ## Backend Coverage
 
 Rust tests should cover:
@@ -94,6 +105,11 @@ Latest local smoke evidence:
   `test-output\demucs-smoke\synthetic.wav`.
 - `htdemucs_6s` downloaded its model weights and wrote the six expected WAV
   stems from the same synthetic WAV.
+- The staged standalone `src-tauri\resources\demucs-runtime\demucs.exe` wrote
+  the four expected `htdemucs` stems and six expected `htdemucs_6s` stems with
+  `TORCH_HOME` pointed at the staged bundled model cache.
+- `npm run build:windows` produced MSI and NSIS bundles with the staged runtime
+  present.
 
 ## Local Audio
 
