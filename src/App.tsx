@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -9,14 +9,23 @@ import {
   AudioWaveform,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
+  Cpu,
   Drum,
+  FileAudio,
   FolderOpen,
   FolderOutput,
-  Gauge,
+  HardDrive,
   Layers3,
   Mic2,
+  MoreVertical,
   Music2,
+  Pause,
   Play,
+  Settings,
+  Square,
+  Volume2,
+  Zap,
 } from "lucide-react";
 import "./App.css";
 
@@ -104,10 +113,13 @@ const modeDetails: Record<
   },
 };
 
-const waveformBars = Array.from({ length: 80 }, (_, index) => {
+const waveformBars = Array.from({ length: 96 }, (_, index) => {
   const tone = Math.sin(index * 0.43) * 0.5 + Math.sin(index * 0.11 + 1.4) * 0.35;
   return 24 + Math.round(Math.abs(tone) * 74);
 });
+
+const timeTicks = ["0:00", "1:20", "2:40", "4:00", "5:20"];
+const frequencyTicks = ["20k", "10k", "5k", "2k", "1k", "500", "100", "20"];
 
 function App() {
   const [inputPath, setInputPath] = useState("");
@@ -172,10 +184,36 @@ function App() {
   const canRun = inputPath.length > 0 && outputDir.length > 0 && !isExtracting && localRuntimeReady;
   const selectedMode = modeDetails[mode];
   const duration = analysis ? formatDuration(analysis.durationSeconds) : "--:--";
+  const progressPercent = Math.round(progress.progress * 100);
+  const currentFileName = analysis?.fileName ?? (inputPath ? fileNameFromPath(inputPath) : "No source loaded");
+  const sampleRate = analysis ? `${analysis.sampleRate.toLocaleString()} Hz` : "--";
+  const channelLabel = analysis ? `${analysis.channels} ch` : "--";
+  const stemRows = report
+    ? report.stems.map((stem) => ({
+        key: stem.path,
+        name: stem.name,
+        fileName: fileNameFromPath(stem.path),
+        role: stem.role,
+        peak: `${dbfs(stem.peak)} dBFS`,
+        status: "Ready",
+      }))
+    : selectedMode.stems.map((stem) => ({
+        key: stem,
+        name: stemDisplayName(stem),
+        fileName: stem,
+        role: stemRole(stem),
+        peak: "-- dB",
+        status: "Pending",
+      }));
 
   const resultStats = useMemo(() => {
     if (!report) {
-      return [];
+      return [
+        `${selectedMode.stems.length} expected stems`,
+        localMode ? "local ML output" : "DSP output",
+        sampleRate,
+        channelLabel,
+      ];
     }
 
     return [
@@ -186,7 +224,44 @@ function App() {
         ? `${(report.reconstructionError * 100).toFixed(2)}% residual error`
         : "local ML output",
     ];
-  }, [report]);
+  }, [channelLabel, localMode, report, sampleRate, selectedMode.stems.length]);
+
+  const processLog = useMemo(() => {
+    const lines = [
+      analysis
+        ? `00:00:00 Loaded file: ${analysis.fileName}`
+        : "00:00:00 Waiting for an audio track",
+      `00:00:01 Mode: ${selectedMode.label}`,
+      localMode
+        ? "00:00:02 Engine: Local Demucs sidecar"
+        : "00:00:02 Engine: Rust DSP backend",
+      `00:00:03 Runtime: ${engineStatusText(mode, localMlStatus)}`,
+    ];
+
+    if (error) {
+      lines.push(`00:00:04 Error: ${error}`);
+    } else if (report) {
+      lines.push(`00:00:04 Complete: wrote ${report.stems.length} stems`);
+      lines.push(`00:00:05 Output: ${report.outputDir}`);
+    } else if (isExtracting) {
+      lines.push(`00:00:04 Processing: ${progress.detail} ${progressPercent}%`);
+    } else {
+      lines.push(`00:00:04 Ready: choose a source and output folder`);
+    }
+
+    return lines;
+  }, [
+    analysis,
+    error,
+    isExtracting,
+    localMode,
+    localMlStatus,
+    mode,
+    progress.detail,
+    progressPercent,
+    report,
+    selectedMode.label,
+  ]);
 
   async function chooseInput() {
     setError("");
@@ -275,59 +350,68 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
+      <header className="app-chrome">
+        <div className="chrome-left">
           <div className="brand-mark" aria-hidden="true">
-            <AudioWaveform size={19} />
+            <AudioWaveform size={18} />
           </div>
-          <div>
-            <h1>YES Stems</h1>
-            <p>Offline ML + DSP stem extraction</p>
-          </div>
+          <h1>YES Stems</h1>
+          <nav className="menu-strip" aria-label="Application menu">
+            <span>File</span>
+            <span>Edit</span>
+            <span>View</span>
+            <span>Process</span>
+            <span>Help</span>
+          </nav>
         </div>
 
-        <div className={`run-state run-state-${progress.phase}`}>
-          {progress.phase === "complete" ? <CheckCircle2 size={16} /> : <Activity size={16} />}
-          <span>{progress.detail}</span>
+        <div className="chrome-right">
+          <div className={`run-state run-state-${progress.phase}`}>
+            {progress.phase === "complete" ? <CheckCircle2 size={15} /> : <Activity size={15} />}
+            <span>{progress.detail}</span>
+          </div>
+          <button className="icon-button" type="button" aria-label="Settings">
+            <Settings size={16} />
+          </button>
         </div>
       </header>
 
-      <section className="workspace-grid">
-        <aside className="left-rail" aria-label="Extraction setup">
-          <section className="panel setup-panel">
-            <div className="panel-heading">
-              <Music2 size={17} />
-              <h2>Source</h2>
+      <section className="workbench">
+        <aside className="rack left-rack" aria-label="Extraction setup">
+          <section className="module source-module">
+            <SectionHeading step="1" title="Source" />
+            <div className="source-file">
+              <FileAudio size={22} />
+              <div>
+                <strong>{currentFileName}</strong>
+                <span>{analysis ? `WAV  -  ${sampleRate}  -  ${channelLabel}` : "Drop in WAV, FLAC, MP3, AIFF, M4A, or OGG"}</span>
+              </div>
             </div>
-
-            <button className="file-picker" type="button" onClick={chooseInput}>
-              <FolderOpen size={18} />
+            <button className="field-button" type="button" onClick={chooseInput}>
+              <FolderOpen size={16} />
               <span>{inputPath ? compactPath(inputPath) : "Select track"}</span>
             </button>
-
-            <button className="file-picker" type="button" onClick={chooseOutput}>
-              <FolderOutput size={18} />
-              <span>{outputDir ? compactPath(outputDir) : "Choose output folder"}</span>
-            </button>
-
-            <div className="source-grid">
-              <Metric label="Duration" value={duration} />
-              <Metric
-                label="Rate"
-                value={analysis ? `${analysis.sampleRate.toLocaleString()} Hz` : "--"}
-              />
-              <Metric label="Channels" value={analysis ? String(analysis.channels) : "--"} />
-              <Metric label="Peak" value={analysis ? `${dbfs(analysis.peak)} dBFS` : "--"} />
-            </div>
           </section>
 
-          <section className="panel mode-panel">
-            <div className="panel-heading">
-              <Layers3 size={17} />
-              <h2>Mode</h2>
+          <section className="module output-module">
+            <SectionHeading step="2" title="Output" />
+            <button className="path-field" type="button" onClick={chooseOutput}>
+              <span>{outputDir ? compactPath(outputDir) : "Choose output folder"}</span>
+              <FolderOutput size={16} />
+            </button>
+            <div className="file-naming-row">
+              <span>File naming</span>
+              <button type="button">
+                Track Name
+                <ChevronDown size={14} />
+              </button>
             </div>
+            <p className="example-name">Example: {stemRows[0]?.fileName ?? "vocals.wav"}</p>
+          </section>
 
-            <div className="segmented-control" role="tablist" aria-label="Stem mode">
+          <section className="module mode-module">
+            <SectionHeading step="3" title="Extraction Mode" />
+            <div className="mode-tabs" role="tablist" aria-label="Stem mode">
               {(Object.keys(modeDetails) as StemMode[]).map((modeKey) => (
                 <button
                   key={modeKey}
@@ -338,154 +422,288 @@ function App() {
                   onClick={() => setMode(modeKey)}
                 >
                   <ModeIcon mode={modeKey} />
-                  <span>{modeDetails[modeKey].label}</span>
+                  <span>
+                    <strong>{modeDetails[modeKey].label}</strong>
+                    <small>{modeDetails[modeKey].short}</small>
+                  </span>
+                  <i aria-hidden="true" />
                 </button>
-              ))}
-            </div>
-
-            <p className="mode-summary">{selectedMode.short}</p>
-
-            <div className="expected-stems">
-              {selectedMode.stems.map((stem) => (
-                <span key={stem}>{stem}</span>
               ))}
             </div>
           </section>
 
-          <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
-            <Play size={18} fill="currentColor" />
-            <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
-          </button>
+          <section className="module advanced-module">
+            <SectionHeading title="Advanced" />
+            <label className="select-row">
+              <span>Algorithm</span>
+              <button type="button">
+                {localMode ? "Hybrid v2" : "Classic DSP"}
+                <ChevronDown size={14} />
+              </button>
+            </label>
+            <SliderRow label="Aggressiveness" value="5" />
+            <SliderRow label="Artifact Reduction" value="5" />
+          </section>
         </aside>
 
-        <section className="analysis-stage" aria-label="Analysis view">
-          <div className="stage-toolbar">
-            <div>
-              <h2>{analysis?.fileName ?? "No source loaded"}</h2>
-              <p>{analysis ? `${analysis.frames.toLocaleString()} frames` : "Awaiting local audio"}</p>
-            </div>
-            <div className="stage-mode">
-              <Gauge size={16} />
-              <span>{selectedMode.label}</span>
-            </div>
-          </div>
-
-          <div className="spectral-field">
-            <div className="spectral-grid" aria-hidden="true">
-              {Array.from({ length: 9 }, (_, index) => (
-                <span key={index} />
-              ))}
-            </div>
-            <div className="waveform" aria-hidden="true">
-              {waveformBars.map((height, index) => (
-                <span
-                  key={`${height}-${index}`}
-                  style={{
-                    height: `${height}%`,
-                    opacity: inputPath ? 0.42 + (height / 100) * 0.45 : 0.24,
-                  }}
-                />
-              ))}
-            </div>
-            <div className="progress-track" aria-label="Extraction progress">
-              <span style={{ width: `${Math.round(progress.progress * 100)}%` }} />
-            </div>
-          </div>
-
-          {error ? (
-            <div className="notice error-notice" role="alert">
-              <AlertTriangle size={18} />
-              <span>{error}</span>
-            </div>
-          ) : (
-            <div className="notice">
-              <Activity size={18} />
-              <span>{progress.detail}</span>
-            </div>
-          )}
-        </section>
-
-        <aside className="right-rail" aria-label="Extraction results">
-          <section className="panel results-panel">
-            <div className="panel-heading">
-              <CheckCircle2 size={17} />
-              <h2>Stems</h2>
-            </div>
-
-            {report ? (
-              <>
-                <div className="result-stats">
-                  {resultStats.map((stat) => (
-                    <span key={stat}>{stat}</span>
-                  ))}
-                </div>
-                <div className="stem-list">
-                  {report.stems.map((stem) => (
-                    <article key={stem.path} className="stem-row">
-                      <div>
-                        <h3>{stem.name}</h3>
-                        <p>{stem.role}</p>
-                      </div>
-                      <span>{dbfs(stem.peak)} dBFS</span>
-                    </article>
-                  ))}
-                </div>
-                <button className="secondary-button" type="button" onClick={revealOutput}>
-                  <FolderOpen size={16} />
-                  <span>Open output</span>
-                </button>
-              </>
-            ) : (
-              <div className="empty-results">
-                <AudioWaveform size={28} />
-                <p>Stem report appears after extraction.</p>
+        <section className="center-stage" aria-label="Analysis and processing">
+          <section className="module analysis-module">
+            <div className="module-bar">
+              <SectionHeading step="4" title="Analysis" />
+              <div className="time-readout">
+                <span>{analysis ? "00:00.000" : "--:--.---"}</span>
+                <span>/</span>
+                <span>{duration}</span>
               </div>
-            )}
+            </div>
+
+            <div className="wave-overview" aria-label="Waveform overview">
+              <div className="wave-bars" aria-hidden="true">
+                {waveformBars.map((height, index) => (
+                  <span
+                    key={`${height}-${index}`}
+                    style={{
+                      height: `${height}%`,
+                      opacity: inputPath ? 0.46 + (height / 100) * 0.42 : 0.18,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="playhead" aria-hidden="true" />
+            </div>
+
+            <div className="time-axis" aria-hidden="true">
+              {timeTicks.map((tick) => (
+                <span key={tick}>{tick}</span>
+              ))}
+              <span>{duration === "--:--" ? "6:35" : duration}</span>
+            </div>
+
+            <div className="spectrogram-grid">
+              <div className="frequency-axis" aria-hidden="true">
+                {frequencyTicks.map((tick) => (
+                  <span key={tick}>{tick}</span>
+                ))}
+              </div>
+              <div className="spectrogram">
+                <div className="spectrogram-noise" aria-hidden="true" />
+                <div className="spectrogram-harmonics" aria-hidden="true" />
+              </div>
+            </div>
           </section>
 
-          <section className="panel method-panel">
-            <div className="panel-heading">
-              <Gauge size={17} />
-              <h2>Method</h2>
+          <section className="module processing-module">
+            <div className="module-bar">
+              <SectionHeading step="5" title="Processing" />
+              <button className="small-button" type="button" disabled={!isExtracting}>
+                Cancel
+              </button>
             </div>
-            <div className={`engine-status ${localRuntimeReady ? "" : "engine-status-warning"}`}>
-              <span>{engineStatusText(mode, localMlStatus)}</span>
+
+            <div className="process-title-row">
+              <div>
+                <strong>{isExtracting ? `Extracting ${selectedMode.label}` : selectedMode.label}</strong>
+                <span>{selectedMode.short}</span>
+              </div>
+              <b>{progressPercent}%</b>
             </div>
-            <ul>
-              {(report?.methodNotes ?? [
-                "Local ML modes run Demucs on-device; no cloud or API calls.",
-                "Classic DSP modes remain available as deterministic fallback.",
-                "Guitar and piano stems use an experimental 6-source model.",
-              ]).map((note) => (
-                <li key={note}>{note}</li>
+            <div className="process-progress" aria-label="Extraction progress">
+              <span style={{ width: `${progressPercent}%` }} />
+            </div>
+
+            {error ? (
+              <div className="notice error-notice" role="alert">
+                <AlertTriangle size={17} />
+                <span>{error}</span>
+              </div>
+            ) : (
+              <div className="console">
+                {processLog.map((line, index) => (
+                  <p key={`${line}-${index}`}>{line}</p>
+                ))}
+              </div>
+            )}
+
+            <div className="transport-actions">
+              <button className="secondary-action" type="button" disabled={!isExtracting}>
+                <Pause size={16} />
+                <span>Pause</span>
+              </button>
+              <button className="secondary-action" type="button" disabled={!isExtracting}>
+                <Square size={15} />
+                <span>Cancel</span>
+              </button>
+              <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
+                <Play size={17} fill="currentColor" />
+                <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
+              </button>
+            </div>
+          </section>
+        </section>
+
+        <aside className="rack right-rack" aria-label="Extraction results">
+          <section className="module results-module">
+            <div className="module-bar">
+              <SectionHeading step="6" title="Results" />
+              <div className="preview-control">
+                <span>Preview</span>
+                <Volume2 size={15} />
+                <i aria-hidden="true" />
+              </div>
+            </div>
+
+            <div className="result-stats">
+              {resultStats.map((stat) => (
+                <span key={stat}>{stat}</span>
               ))}
-            </ul>
+            </div>
+
+            <div className="stem-list">
+              {stemRows.map((stem) => (
+                <article key={stem.key} className={stem.status === "Ready" ? "stem-row ready" : "stem-row"}>
+                  <StemGlyph name={stem.name} />
+                  <div>
+                    <h3>{stem.name}</h3>
+                    <p>{stem.fileName}</p>
+                    <small>{stem.role}</small>
+                  </div>
+                  <div className="stem-meta">
+                    <span>SNR</span>
+                    <b>{stem.peak}</b>
+                    <em>{stem.status}</em>
+                  </div>
+                  <button className="icon-button row-menu" type="button" aria-label={`More options for ${stem.name}`}>
+                    <MoreVertical size={15} />
+                  </button>
+                </article>
+              ))}
+            </div>
+
+            <div className="result-actions">
+              <button className="secondary-action" type="button" disabled={!report}>
+                <Play size={16} fill="currentColor" />
+                <span>Play All</span>
+              </button>
+              <button className="secondary-action" type="button" onClick={revealOutput} disabled={!outputDir && !report}>
+                <FolderOpen size={16} />
+                <span>Open Output</span>
+              </button>
+              <button className="export-action" type="button" disabled={!report}>
+                <FolderOutput size={16} />
+                <span>Export All</span>
+              </button>
+            </div>
           </section>
         </aside>
       </section>
+
+      <footer className="status-bar">
+        <MeterBar icon={<Cpu size={13} />} label="CPU" value="24%" />
+        <MeterBar icon={<HardDrive size={13} />} label="RAM" value="3.1 GB" />
+        <span>{isExtracting ? "Processing" : progress.phase === "complete" ? "Complete" : "Ready"}</span>
+        <span>{engineStatusText(mode, localMlStatus)}</span>
+        <span className={localRuntimeReady ? "gpu-ready" : "gpu-warning"}>
+          <Zap size={13} />
+          {localRuntimeReady ? "Local Acceleration Ready" : "Runtime Missing"}
+        </span>
+      </footer>
     </main>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function SectionHeading({ step, title }: { step?: string; title: string }) {
   return (
-    <div className="metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="section-heading">
+      <span>{step ? `${step}.` : ""}</span>
+      <h2>{title}</h2>
     </div>
   );
 }
 
+function SliderRow({ label, value }: { label: string; value: string }) {
+  return (
+    <label className="slider-row">
+      <span>{label}</span>
+      <div>
+        <i aria-hidden="true" />
+        <output>{value}</output>
+      </div>
+    </label>
+  );
+}
+
+function MeterBar({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="meter-bar">
+      {icon}
+      <span>{label}: {value}</span>
+      <i aria-hidden="true" />
+    </div>
+  );
+}
+
+function StemGlyph({ name }: { name: string }) {
+  const lower = name.toLowerCase();
+  if (lower.includes("vocal")) {
+    return <Mic2 size={23} />;
+  }
+
+  if (lower.includes("drum") || lower.includes("percussion")) {
+    return <Drum size={23} />;
+  }
+
+  if (lower.includes("bass")) {
+    return <Music2 size={23} />;
+  }
+
+  if (lower.includes("piano") || lower.includes("harmonic")) {
+    return <Layers3 size={23} />;
+  }
+
+  return <AudioWaveform size={23} />;
+}
+
 function ModeIcon({ mode }: { mode: StemMode }) {
   if (mode === "localMlSix" || mode === "localMlFour") {
-    return <BrainCircuit size={16} />;
+    return <BrainCircuit size={17} />;
   }
 
   if (mode === "vocalInstrumental") {
-    return <Mic2 size={16} />;
+    return <Mic2 size={17} />;
   }
 
-  return <Drum size={16} />;
+  return <Drum size={17} />;
+}
+
+function stemDisplayName(fileName: string) {
+  const base = fileName.replace(/\.wav$/i, "").replace(/_/g, " ");
+  return base.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function stemRole(fileName: string) {
+  const lower = fileName.toLowerCase();
+  if (lower.includes("vocal")) {
+    return "Lead and backing vocal content";
+  }
+  if (lower.includes("drum") || lower.includes("percussion")) {
+    return "Percussion and transient material";
+  }
+  if (lower.includes("bass")) {
+    return "Low-frequency bass band";
+  }
+  if (lower.includes("guitar")) {
+    return "Guitar-focused source estimate";
+  }
+  if (lower.includes("piano")) {
+    return "Piano-focused source estimate";
+  }
+  if (lower.includes("instrumental")) {
+    return "Vocal-minus instrumental bed";
+  }
+  if (lower.includes("harmonic")) {
+    return "Sustained harmonic bed";
+  }
+  return "Residual and supporting musical material";
 }
 
 function isLocalMlMode(mode: StemMode) {
@@ -532,6 +750,12 @@ function compactPath(path: string) {
   }
 
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+}
+
+function fileNameFromPath(path: string) {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
 }
 
 function formatDuration(seconds: number) {
