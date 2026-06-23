@@ -60,7 +60,7 @@ Run from the repo root after frontend changes:
 
 ```powershell
 npm run build
-npm run preview -- --host 127.0.0.1 --port 4173
+npm run preview:local
 ```
 
 In a second shell, capture the current desktop viewport:
