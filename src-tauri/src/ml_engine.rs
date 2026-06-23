@@ -259,7 +259,7 @@ fn demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
             label: format!("YES_STEMS_DEMUCS={}", path.to_string_lossy()),
             program: path,
             args_prefix: Vec::new(),
-            envs: Vec::new(),
+            envs: demucs_process_envs(),
         });
     }
     runners.extend(bundled_demucs_runners(resource_dir));
@@ -268,28 +268,35 @@ fn demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
             label: format!("local venv {}", path.display()),
             program: path.into_os_string(),
             args_prefix: Vec::new(),
-            envs: Vec::new(),
+            envs: demucs_process_envs(),
         });
     }
     runners.push(DemucsRunner {
         program: OsString::from("demucs"),
         args_prefix: Vec::new(),
-        envs: Vec::new(),
+        envs: demucs_process_envs(),
         label: "demucs".to_string(),
     });
     runners.push(DemucsRunner {
         program: OsString::from("python"),
         args_prefix: vec![OsString::from("-m"), OsString::from("demucs")],
-        envs: Vec::new(),
+        envs: demucs_process_envs(),
         label: "python -m demucs".to_string(),
     });
     runners.push(DemucsRunner {
         program: OsString::from("py"),
         args_prefix: vec![OsString::from("-m"), OsString::from("demucs")],
-        envs: Vec::new(),
+        envs: demucs_process_envs(),
         label: "py -m demucs".to_string(),
     });
     runners
+}
+
+fn demucs_process_envs() -> Vec<(OsString, OsString)> {
+    vec![
+        (OsString::from("PYTHONUTF8"), OsString::from("1")),
+        (OsString::from("PYTHONIOENCODING"), OsString::from("utf-8")),
+    ]
 }
 
 fn bundled_demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
@@ -298,11 +305,10 @@ fn bundled_demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
     };
     let root = resource_dir.join("demucs-runtime");
     let torch_home = root.join("torch-cache");
-    let envs = if torch_home.exists() {
-        vec![(OsString::from("TORCH_HOME"), torch_home.into_os_string())]
-    } else {
-        Vec::new()
-    };
+    let mut envs = demucs_process_envs();
+    if torch_home.exists() {
+        envs.push((OsString::from("TORCH_HOME"), torch_home.into_os_string()));
+    }
 
     bundled_demucs_candidates(&root)
         .into_iter()
@@ -502,9 +508,28 @@ mod tests {
             .expect("bundled runner");
 
         assert_eq!(bundled.program, demucs_exe.into_os_string());
-        assert_eq!(
-            bundled.envs,
-            vec![(OsString::from("TORCH_HOME"), cache_dir.into_os_string())]
+        assert!(
+            bundled
+                .envs
+                .contains(&(OsString::from("TORCH_HOME"), cache_dir.into_os_string()))
         );
+    }
+
+    #[test]
+    fn demucs_runners_force_utf8_python_stdio() {
+        let runners = demucs_runners(None);
+
+        for runner in runners {
+            assert!(
+                runner
+                    .envs
+                    .contains(&(OsString::from("PYTHONUTF8"), OsString::from("1")))
+            );
+            assert!(
+                runner
+                    .envs
+                    .contains(&(OsString::from("PYTHONIOENCODING"), OsString::from("utf-8")))
+            );
+        }
     }
 }
