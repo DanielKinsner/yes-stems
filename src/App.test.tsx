@@ -58,7 +58,6 @@ describe("YES Stems app", () => {
 
     for (const heading of [
       "Source",
-      "Export",
       "Extraction Mode",
       "Advanced",
       "Analysis",
@@ -69,6 +68,7 @@ describe("YES Stems app", () => {
     }
 
     expect(screen.getByText("6 expected stems")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Export All/i })).toBeDisabled();
   });
 
   it("defaults to local ML six-stem expectations", () => {
@@ -163,6 +163,10 @@ describe("YES Stems app", () => {
         tuning: {
           aggressiveness: 5,
           artifactReduction: 5,
+        },
+        cleanup: {
+          enabled: true,
+          strength: 4,
         },
       },
     });
@@ -277,6 +281,65 @@ describe("YES Stems app", () => {
         tuning: {
           aggressiveness: 8,
           artifactReduction: 2,
+        },
+        cleanup: {
+          enabled: true,
+          strength: 4,
+        },
+      },
+    });
+  });
+
+  it("passes stem cleanup options from advanced controls", async () => {
+    tauriMocks.open
+      .mockResolvedValueOnce("C:\\music\\song.wav");
+    tauriMocks.invoke
+      .mockResolvedValueOnce({
+        fileName: "song",
+        sampleRate: 44_100,
+        channels: 2,
+        frames: 132_300,
+        durationSeconds: 3,
+        peak: 0.8,
+        waveformPeaks: [0.1, 0.8, 0.4],
+      })
+      .mockResolvedValueOnce({
+        sourceName: "song",
+        mode: "localMlSix",
+        modeLabel: "Local ML 6 Stems",
+        outputDir: "C:\\renders\\song",
+        sampleRate: 44_100,
+        channels: 2,
+        frames: 132_300,
+        durationSeconds: 3,
+        reconstructionError: -1,
+        methodNotes: ["cleanup disabled by request"],
+        stems: [],
+      });
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Cleanup Strength"), { target: { value: "7" } });
+    fireEvent.click(screen.getByLabelText(/Clean Up Stems/i));
+    fireEvent.click(screen.getByRole("button", { name: /Select track/i }));
+    await screen.findByText("song");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Run extraction/i })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
+
+    await screen.findByText(/cleanup disabled/i);
+    expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
+      request: {
+        inputPath: "C:\\music\\song.wav",
+        mode: "localMlSix",
+        tuning: {
+          aggressiveness: 5,
+          artifactReduction: 5,
+        },
+        cleanup: {
+          enabled: false,
+          strength: 7,
         },
       },
     });

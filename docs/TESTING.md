@@ -85,6 +85,8 @@ Rust tests should cover:
 - STFT/iSTFT reconstruction tolerance.
 - mask partition sanity.
 - exported WAV sample rate, channels, duration, and finite samples.
+- stem cleanup shape preservation, finite-sample sanitization, and low-level
+  bleed reduction.
 - local ML mode-to-model/stem contracts without requiring Demucs at unit-test
   time.
 - command/report contracts where practical.
@@ -96,6 +98,7 @@ Frontend tests should cover:
 - selected mode copy and stem expectations.
 - disabled run states.
 - progress/result rendering.
+- cleanup option request wiring.
 - no visible cloud/API extraction claims.
 
 ## Optional Local ML Smoke
@@ -120,7 +123,9 @@ Then choose:
 - `Local ML 4 Stems`
 - `Local ML 6 Stems`
 
-The app should write the expected WAV filenames to the chosen output folder.
+The app should write the expected WAV filenames to its app-managed working
+folder, then Export All should copy finished stems to the user-selected
+destination.
 Do not commit private fixtures or generated stems.
 
 Direct CLI smoke commands:

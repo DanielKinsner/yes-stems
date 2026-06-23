@@ -11,7 +11,8 @@ use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioIoError},
-    types::{ExtractionReport, LocalMlStatus, StemFile, StemMode},
+    stem_cleanup,
+    types::{ExtractionReport, LocalMlStatus, StemCleanupOptions, StemFile, StemMode},
 };
 
 #[derive(Debug, Error)]
@@ -80,6 +81,7 @@ pub fn extract_track_to_directory<F>(
     output_root: &Path,
     mode: StemMode,
     resource_dir: Option<PathBuf>,
+    cleanup: StemCleanupOptions,
     mut progress: F,
 ) -> Result<ExtractionReport, MlEngineError>
 where
@@ -89,6 +91,7 @@ where
         .demucs_model()
         .ok_or(MlEngineError::UnsupportedMode(mode))?;
     let stems = stem_plan(mode)?;
+    let cleanup = cleanup.clamped();
     let source_name = audio_io::file_name(input_path);
     let analysis = audio_io::analyze_track(input_path)?;
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
@@ -128,8 +131,14 @@ where
                 }
             })?;
         let target = output_dir.join(stem.filename);
-        fs::copy(&source, &target).map_err(MlEngineError::CopyStem)?;
-        let audio = audio_io::decode_audio(&target)?;
+        let mut audio = audio_io::decode_audio(&source)?;
+        if cleanup.is_active() {
+            stem_cleanup::cleanup_samples(&mut audio.samples, audio.sample_rate, cleanup);
+            audio_io::write_wav(&target, audio.sample_rate, &audio.samples)?;
+        } else {
+            fs::copy(&source, &target).map_err(MlEngineError::CopyStem)?;
+            audio = audio_io::decode_audio(&target)?;
+        }
         stem_files.push(StemFile {
             name: stem.name.to_string(),
             role: stem.role.to_string(),
@@ -154,7 +163,7 @@ where
         frames: analysis.frames,
         duration_seconds: analysis.duration_seconds,
         stems: stem_files,
-        method_notes: method_notes(mode, model),
+        method_notes: method_notes(mode, model, cleanup),
         reconstruction_error: -1.0,
     })
 }
@@ -494,7 +503,7 @@ fn stem_plan(mode: StemMode) -> Result<Vec<MlStemSpec>, MlEngineError> {
     Ok(stems)
 }
 
-fn method_notes(mode: StemMode, model: &str) -> Vec<String> {
+fn method_notes(mode: StemMode, model: &str, cleanup: StemCleanupOptions) -> Vec<String> {
     let mut notes = vec![
         format!("Local Demucs model inference ({model}); no cloud or API calls."),
         "Runs through a local executable or Python module; future builds can swap this boundary for ONNX/Core ML.".to_string(),
@@ -505,6 +514,9 @@ fn method_notes(mode: StemMode, model: &str) -> Vec<String> {
             "The 6-stem model adds guitar and piano, but Demucs documents piano as artifact-prone."
                 .to_string(),
         );
+    }
+    if let Some(note) = stem_cleanup::method_note(cleanup) {
+        notes.push(note);
     }
     notes
 }
@@ -637,6 +649,24 @@ mod tests {
         assert_eq!(
             fs::read(&workspace.input_path).expect("copied input"),
             b"fake audio bytes"
+        );
+    }
+
+    #[test]
+    fn local_ml_method_notes_include_cleanup_when_enabled() {
+        let notes = method_notes(
+            StemMode::LocalMlSix,
+            "htdemucs_6s",
+            StemCleanupOptions {
+                enabled: true,
+                strength: 7,
+            },
+        );
+
+        assert!(
+            notes
+                .iter()
+                .any(|note| note.contains("Stem cleanup applied at strength 7"))
         );
     }
 }

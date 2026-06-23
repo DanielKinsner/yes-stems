@@ -38,6 +38,7 @@ pub struct ExtractRequest {
     pub input_path: String,
     pub mode: StemMode,
     pub tuning: Option<SeparationTuning>,
+    pub cleanup: Option<StemCleanupOptions>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -62,6 +63,26 @@ impl SeparationTuning {
             aggressiveness: self.aggressiveness.min(10),
             artifact_reduction: self.artifact_reduction.min(10),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StemCleanupOptions {
+    pub enabled: bool,
+    pub strength: u8,
+}
+
+impl StemCleanupOptions {
+    pub fn clamped(self) -> Self {
+        Self {
+            enabled: self.enabled,
+            strength: self.strength.min(10),
+        }
+    }
+
+    pub fn is_active(self) -> bool {
+        self.enabled && self.strength > 0
     }
 }
 

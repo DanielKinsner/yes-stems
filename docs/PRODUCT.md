@@ -46,13 +46,16 @@ with `npm run build:windows:standalone`.
 3. For classic DSP modes, optionally adjust aggressiveness and artifact
    reduction before running extraction. Local ML modes keep these controls
    disabled because Demucs does not consume those product-level settings.
-4. Run extraction with visible progress. Extraction writes to an app-managed
+4. Optionally enable stem cleanup. Cleanup is a real post-process across local
+   ML and classic DSP stems: it removes DC offset, clamps non-finite samples,
+   applies short edge fades, and softly reduces low-level bleed.
+5. Run extraction with visible progress. Extraction writes to an app-managed
    working folder so the user does not need to choose an output destination up
    front.
-5. Review the exported stem list, audition individual stems, play the rendered
+6. Review the exported stem list, audition individual stems, play the rendered
    stems in sequence, and inspect method
    notes.
-6. Export All asks for the user-facing output folder and copies the finished
+7. Export All asks for the user-facing output folder and copies the finished
    WAV stems there.
 
 ## Stem Modes
@@ -120,6 +123,7 @@ Quality is evaluated with objective and mechanical checks:
 - exported stems are finite PCM
 - stems have the expected sample rate, channel count, and duration
 - classic DSP partitions sum close to the input within tolerance
+- optional stem cleanup preserves stem shape and produces finite PCM
 - local ML modes report the exact files written by the local runtime
 - UI progress and results reflect real backend work
 
@@ -146,4 +150,5 @@ not a decorative static waveform.
 - Batch queues.
 - Cancellable/pausable extraction workers and richer transport controls.
 - Advanced user controls for STFT window, hop, mask sharpness, and filter spans.
+- Manual cleanup profiles beyond the current deterministic cleanup strength.
 - Signing, notarization, autoupdate, and model download/signature management.

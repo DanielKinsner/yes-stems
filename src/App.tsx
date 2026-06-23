@@ -130,6 +130,8 @@ function App() {
   const [mode, setMode] = useState<StemMode>("localMlSix");
   const [aggressiveness, setAggressiveness] = useState(5);
   const [artifactReduction, setArtifactReduction] = useState(5);
+  const [cleanupEnabled, setCleanupEnabled] = useState(true);
+  const [cleanupStrength, setCleanupStrength] = useState(4);
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(null);
   const [localMlStatus, setLocalMlStatus] = useState<LocalMlStatus | null>(null);
   const [report, setReport] = useState<ExtractionReport | null>(null);
@@ -375,6 +377,10 @@ function App() {
           tuning: {
             aggressiveness,
             artifactReduction,
+          },
+          cleanup: {
+            enabled: cleanupEnabled,
+            strength: cleanupStrength,
           },
         },
       });
@@ -641,27 +647,8 @@ function App() {
             </button>
           </section>
 
-          <section className="module output-module">
-            <SectionHeading step="2" title="Export" />
-            <div className="export-contract">
-              <FolderOutput size={16} />
-              <div>
-                <strong>{report ? "Ready to export" : "Choose destination later"}</strong>
-                <span>{report ? "Use Export All to pick a folder." : "Extraction uses an internal working folder."}</span>
-              </div>
-            </div>
-            <div className="file-naming-row">
-              <span>File naming</span>
-              <button type="button" title="Exports currently use the source track name." disabled>
-                Source Name
-                <ChevronDown size={14} />
-              </button>
-            </div>
-            <p className="example-name">Example: {stemRows[0]?.fileName ?? "vocals.wav"}</p>
-          </section>
-
           <section className="module mode-module">
-            <SectionHeading step="3" title="Extraction Mode" />
+            <SectionHeading step="2" title="Extraction Mode" />
             <div className="mode-tabs" role="tablist" aria-label="Stem mode">
               {(Object.keys(modeDetails) as StemMode[]).map((modeKey) => (
                 <button
@@ -711,13 +698,27 @@ function App() {
               disabledReason="Only classic DSP modes use this control."
               onChange={setArtifactReduction}
             />
+            <CheckboxRow
+              label="Clean Up Stems"
+              checked={cleanupEnabled}
+              disabled={isExtracting}
+              description="DC, edge, and quiet-bleed cleanup"
+              onChange={setCleanupEnabled}
+            />
+            <SliderRow
+              label="Cleanup Strength"
+              value={cleanupStrength}
+              disabled={!cleanupEnabled || isExtracting}
+              disabledReason="Enable Clean Up Stems to change this control."
+              onChange={setCleanupStrength}
+            />
           </section>
         </aside>
 
         <section className="center-stage" aria-label="Analysis and processing">
           <section className="module analysis-module">
             <div className="module-bar">
-              <SectionHeading step="4" title="Analysis" />
+              <SectionHeading step="3" title="Analysis" />
               <div className="time-readout">
                 <span>{analysis ? "00:00.000" : "--:--.---"}</span>
                 <span>/</span>
@@ -789,7 +790,7 @@ function App() {
 
           <section className="module processing-module">
             <div className="module-bar">
-              <SectionHeading step="5" title="Processing" />
+              <SectionHeading step="4" title="Processing" />
               <button
                 className="small-button"
                 type="button"
@@ -854,7 +855,7 @@ function App() {
         <aside className="rack right-rack" aria-label="Extraction results">
           <section className="module results-module">
             <div className="module-bar">
-              <SectionHeading step="6" title="Results" />
+              <SectionHeading step="5" title="Results" />
               <div className="preview-control">
                 <span>Preview</span>
                 <Volume2 size={15} />
@@ -992,6 +993,35 @@ function SliderRow({
         />
         <output>{value}</output>
       </div>
+    </label>
+  );
+}
+
+function CheckboxRow({
+  label,
+  checked,
+  disabled,
+  description,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="toggle-row">
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
     </label>
   );
 }

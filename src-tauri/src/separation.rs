@@ -5,7 +5,8 @@ use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioBuffer, AudioIoError},
-    types::{ExtractionReport, SeparationTuning, StemFile, StemMode},
+    stem_cleanup,
+    types::{ExtractionReport, SeparationTuning, StemCleanupOptions, StemFile, StemMode},
 };
 
 const WINDOW_SIZE: usize = 2048;
@@ -43,6 +44,7 @@ pub fn extract_to_directory<F>(
     output_dir: &Path,
     mode: StemMode,
     tuning: SeparationTuning,
+    cleanup: StemCleanupOptions,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -65,6 +67,7 @@ where
         "estimating harmonic and percussive masks".to_string(),
     );
     let tuning = tuning.clamped();
+    let cleanup = cleanup.clamped();
     let mask_set = build_masks(&stft, audio.sample_rate, tuning);
 
     progress(
@@ -77,6 +80,7 @@ where
     progress("export", 0.76, "writing 24-bit wav stems".to_string());
     let mut stem_files = Vec::with_capacity(stems.len());
     for stem in &mut stems {
+        stem_cleanup::cleanup_samples(&mut stem.samples, audio.sample_rate, cleanup);
         clamp_audio(&mut stem.samples);
         let path = output_dir.join(stem.filename);
         audio_io::write_wav(&path, audio.sample_rate, &stem.samples)?;
@@ -107,7 +111,7 @@ where
         frames: audio.frames(),
         duration_seconds: audio.duration_seconds(),
         stems: stem_files,
-        method_notes: method_notes(mode, tuning),
+        method_notes: method_notes(mode, tuning, cleanup),
         reconstruction_error,
     })
 }
@@ -117,6 +121,7 @@ pub fn extract_track_to_directory<F>(
     output_root: &Path,
     mode: StemMode,
     tuning: SeparationTuning,
+    cleanup: StemCleanupOptions,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -126,7 +131,7 @@ where
     let audio = audio_io::decode_audio(input_path)?;
     let source_name = audio_io::file_name(input_path);
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
-    let mut report = extract_to_directory(&audio, &output_dir, mode, tuning, progress)?;
+    let mut report = extract_to_directory(&audio, &output_dir, mode, tuning, cleanup, progress)?;
     report.source_name = source_name;
     Ok(report)
 }
@@ -355,7 +360,11 @@ fn render_stems(stft: &Stft, mode: StemMode, masks: &MaskSet) -> Vec<StemRender>
     }
 }
 
-fn method_notes(mode: StemMode, tuning: SeparationTuning) -> Vec<String> {
+fn method_notes(
+    mode: StemMode,
+    tuning: SeparationTuning,
+    cleanup: StemCleanupOptions,
+) -> Vec<String> {
     let mut notes = vec![
         "Local non-AI extraction; no model inference or cloud processing.".to_string(),
         "Masks are applied to the original complex spectra to preserve mixture phase.".to_string(),
@@ -371,6 +380,9 @@ fn method_notes(mode: StemMode, tuning: SeparationTuning) -> Vec<String> {
         notes.push(
             "Full-band layers combine HPSS, residual, and bass-band partitioning.".to_string(),
         );
+    }
+    if let Some(note) = stem_cleanup::method_note(cleanup) {
+        notes.push(note);
     }
     notes
 }
@@ -590,6 +602,7 @@ mod tests {
             temp.path(),
             StemMode::VocalInstrumental,
             SeparationTuning::default(),
+            StemCleanupOptions::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -620,6 +633,7 @@ mod tests {
             temp.path(),
             StemMode::FullBand,
             SeparationTuning::default(),
+            StemCleanupOptions::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -650,6 +664,7 @@ mod tests {
                 aggressiveness: 0,
                 artifact_reduction: 10,
             },
+            StemCleanupOptions::default(),
             |_, _, _| {},
         )
         .expect("gentle extract");
@@ -661,6 +676,7 @@ mod tests {
                 aggressiveness: 10,
                 artifact_reduction: 0,
             },
+            StemCleanupOptions::default(),
             |_, _, _| {},
         )
         .expect("assertive extract");
@@ -682,6 +698,32 @@ mod tests {
                 .method_notes
                 .iter()
                 .any(|note| note.contains("aggressiveness 0"))
+        );
+    }
+
+    #[test]
+    fn cleanup_notes_are_reported_when_enabled() {
+        let audio = synthetic_audio();
+        let temp = tempfile::tempdir().expect("temp dir");
+
+        let report = extract_to_directory(
+            &audio,
+            temp.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning::default(),
+            StemCleanupOptions {
+                enabled: true,
+                strength: 4,
+            },
+            |_, _, _| {},
+        )
+        .expect("extract stems");
+
+        assert!(
+            report
+                .method_notes
+                .iter()
+                .any(|note| note.contains("Stem cleanup applied at strength 4"))
         );
     }
 

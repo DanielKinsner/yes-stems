@@ -2,6 +2,7 @@ mod audio_io;
 mod commands;
 mod ml_engine;
 mod separation;
+mod stem_cleanup;
 mod types;
 
 pub use types::*;

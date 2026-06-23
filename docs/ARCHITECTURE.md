@@ -17,6 +17,8 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 - Advanced aggressiveness/artifact-reduction controls are enabled only for
   classic DSP modes. Local ML modes disable them because the Demucs boundary
   does not safely consume those product-level controls.
+- Stem cleanup controls are enabled across modes because cleanup is a local
+  post-process after stem rendering, not an inference or mask parameter.
 - The desktop workspace is optimized for `1280x800` with a `1120x720`
   minimum window so the setup rail, analysis stage, processing console, and
   results rack remain visible together.
@@ -28,6 +30,8 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
   reports.
 - `src-tauri/src/ml_engine.rs` owns the local Demucs invocation boundary and
   collects emitted stem files.
+- `src-tauri/src/stem_cleanup.rs` owns deterministic post-processing for
+  rendered stems.
 - `src-tauri/src/commands.rs` exposes Tauri commands.
 - `src-tauri/src/types.rs` defines shared request/response contracts.
 
@@ -39,8 +43,10 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
    - `Local ML 4 Stems` -> `htdemucs`
    - `Local ML 6 Stems` -> `htdemucs_6s`
 4. Search the Demucs work directory for the expected WAV stems.
-5. Copy stems into the app-managed working output directory.
-6. Decode the written stems locally to report frames, peaks, and paths.
+5. Decode each emitted stem. When cleanup is enabled, apply the deterministic
+   cleanup pass and write a fresh 24-bit WAV into the app-managed working
+   output directory. When cleanup is disabled, copy the Demucs WAV as-is.
+6. Report frames, peaks, and paths from the written stems.
 7. Return a report with method notes and `reconstruction_error = -1.0` to mark
    model output rather than a classic mask partition diagnostic.
 
@@ -93,10 +99,20 @@ Packaging seam:
      rough mask edges
 6. Apply masks to each channel's original complex spectrum.
 7. Reconstruct stems by inverse FFT and overlap-add.
-8. Write 24-bit WAV files with source sample rate and channel count into the
+8. Optionally apply deterministic stem cleanup before writing.
+9. Write 24-bit WAV files with source sample rate and channel count into the
    app-managed working output directory.
-9. Return a report with duration, stem paths, method notes, and reconstruction
+10. Return a report with duration, stem paths, method notes, and reconstruction
    error.
+
+## Stem Cleanup
+
+Stem cleanup is intentionally conservative and local. When enabled, the backend
+removes per-channel DC offset, clamps non-finite samples, applies short
+fade-in/fade-out edges, and uses a soft downward-expansion pass to reduce
+low-level bleed without changing stem duration, sample rate, or channel count.
+It is not a second separation model and does not claim to recover missing
+instrument information.
 
 ## Product Honesty
 

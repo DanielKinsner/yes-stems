@@ -43,6 +43,7 @@ pub async fn extract_stems(
         let input_path = PathBuf::from(request.input_path);
         let mode = request.mode;
         let tuning = request.tuning.unwrap_or_default().clamped();
+        let cleanup = request.cleanup.unwrap_or_default().clamped();
         let progress_app = app.clone();
 
         let emit_progress = move |phase: &str, progress: f32, detail: String| {
@@ -62,6 +63,7 @@ pub async fn extract_stems(
                 &managed_output_root,
                 mode,
                 resource_dir,
+                cleanup,
                 emit_progress,
             )
             .map_err(|error| error.to_string())
@@ -71,6 +73,7 @@ pub async fn extract_stems(
                 &managed_output_root,
                 mode,
                 tuning,
+                cleanup,
                 emit_progress,
             )
             .map_err(|error| error.to_string())
