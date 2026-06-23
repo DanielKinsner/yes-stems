@@ -6,6 +6,10 @@ The first shipping target is a Tauri desktop workflow that can load a music
 track, run local ML or classic DSP extraction, and export WAV files without
 sending audio to a cloud service or frontier-model API.
 
+## Current UI
+
+![YES Stems desktop workspace](docs/screenshots/yes-stems-installed-app.png)
+
 ## Local Demucs Runtime
 
 The current dev runtime uses Demucs locally through a repo-local Python venv.

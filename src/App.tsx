@@ -728,7 +728,7 @@ function engineStatusText(mode: StemMode, status: LocalMlStatus | null) {
   }
 
   if (!hasTauriRuntime()) {
-    return "Web preview; local ML preflight runs inside the Tauri app.";
+    return "Web preview; Tauri checks local ML runtime.";
   }
 
   if (!status) {
