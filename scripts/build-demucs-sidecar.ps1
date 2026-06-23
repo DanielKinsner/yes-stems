@@ -29,13 +29,23 @@ function Resolve-RepoChild {
 Push-Location $RepoRoot
 
 try {
-  & $SetupScript -Python $Python -Venv $Venv
-
   $VenvPython = Join-Path -Path $Venv -ChildPath "Scripts/python.exe"
   if (-not (Test-Path -LiteralPath $VenvPython)) {
     $VenvPython = Join-Path -Path $Venv -ChildPath "bin/python"
   }
+  if (-not (Test-Path -LiteralPath $VenvPython)) {
+    & $SetupScript -Python $Python -Venv $Venv
+    $VenvPython = Join-Path -Path $Venv -ChildPath "Scripts/python.exe"
+    if (-not (Test-Path -LiteralPath $VenvPython)) {
+      $VenvPython = Join-Path -Path $Venv -ChildPath "bin/python"
+    }
+  }
+  if (-not (Test-Path -LiteralPath $VenvPython)) {
+    throw "Could not find Python inside $Venv after setup."
+  }
 
+  & $VenvPython -m pip install --upgrade pip
+  & $VenvPython -m pip install -r requirements-demucs.txt
   & $VenvPython -m pip install "pyinstaller==6.21.0"
 
   $safeBuildRoot = Resolve-RepoChild $BuildRoot
