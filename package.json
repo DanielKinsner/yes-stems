@@ -17,6 +17,7 @@
     "verify:frontend": "npm test && npm run build",
     "verify:rust": "cargo fmt --check --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml",
     "verify:fast": "npm run verify:frontend && npm run verify:rust",
+    "verify:release": "npm run verify:branch && npm run verify:fast && npm run verify:screenshot",
     "build:demucs-sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-demucs-sidecar.ps1",
     "build:windows": "tauri build",
     "build:windows:standalone": "npm run build:demucs-sidecar && tauri build",
