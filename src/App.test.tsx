@@ -144,6 +144,7 @@ describe("YES Stems app", () => {
     await screen.findByRole("heading", { name: "Vocals" });
     expect(screen.getByRole("heading", { name: "Guitar" })).toBeInTheDocument();
     expect(screen.getByText("local ML output")).toBeInTheDocument();
+    expect(screen.getByText(/Local Demucs model inference/i)).toBeInTheDocument();
     expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
       request: {
         inputPath: "C:\\music\\song.wav",
