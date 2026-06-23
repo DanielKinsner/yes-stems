@@ -243,6 +243,9 @@ function App() {
     } else if (report) {
       lines.push(`00:00:04 Complete: wrote ${report.stems.length} stems`);
       lines.push(`00:00:05 Output: ${report.outputDir}`);
+      for (const note of report.methodNotes.slice(0, 3)) {
+        lines.push(`00:00:06 Note: ${note}`);
+      }
     } else if (isExtracting) {
       lines.push(`00:00:04 Processing: ${progress.detail} ${progressPercent}%`);
     } else {
