@@ -4,6 +4,7 @@ Run from `main` before sharing a Windows build.
 
 ```powershell
 git status --short --branch
+npm run verify:branch
 npm run verify:fast
 npm run verify:screenshot
 npm run build:windows:standalone
