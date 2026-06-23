@@ -72,6 +72,9 @@ describe("YES Stems app", () => {
       "aria-selected",
       "true",
     );
+    expect(screen.getByText("vocals.wav")).toBeInTheDocument();
+    expect(screen.getByText("drums.wav")).toBeInTheDocument();
+    expect(screen.getByText("bass.wav")).toBeInTheDocument();
     expect(screen.getByText("guitar.wav")).toBeInTheDocument();
     expect(screen.getByText("piano.wav")).toBeInTheDocument();
     expect(screen.getByText("other.wav")).toBeInTheDocument();
