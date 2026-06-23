@@ -105,6 +105,10 @@ function App() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+
     const unlisten = listen<ProgressEvent>("stems://progress", (event) => {
       setProgress(event.payload);
     });
@@ -447,6 +451,10 @@ function errorMessage(error: unknown) {
   }
 
   return String(error);
+}
+
+function hasTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export default App;
