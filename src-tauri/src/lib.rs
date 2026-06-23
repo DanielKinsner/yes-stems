@@ -1,5 +1,6 @@
 mod audio_io;
 mod commands;
+mod ml_engine;
 mod separation;
 mod types;
 

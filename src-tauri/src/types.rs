@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub enum StemMode {
     VocalInstrumental,
     FullBand,
+    LocalMlFour,
+    LocalMlSix,
 }
 
 impl StemMode {
@@ -12,6 +14,20 @@ impl StemMode {
         match self {
             Self::VocalInstrumental => "Vocal + Instrumental",
             Self::FullBand => "Full Band Layers",
+            Self::LocalMlFour => "Local ML 4 Stems",
+            Self::LocalMlSix => "Local ML 6 Stems",
+        }
+    }
+
+    pub fn is_local_ml(self) -> bool {
+        matches!(self, Self::LocalMlFour | Self::LocalMlSix)
+    }
+
+    pub fn demucs_model(self) -> Option<&'static str> {
+        match self {
+            Self::LocalMlFour => Some("htdemucs"),
+            Self::LocalMlSix => Some("htdemucs_6s"),
+            _ => None,
         }
     }
 }

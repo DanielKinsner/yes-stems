@@ -47,6 +47,7 @@ pub fn extract_to_directory<F>(
 where
     F: FnMut(&str, f32, String),
 {
+    debug_assert!(!mode.is_local_ml());
     audio.ensure_valid()?;
     std::fs::create_dir_all(output_dir).map_err(SeparationError::OutputDirectory)?;
 
@@ -330,6 +331,7 @@ fn render_stems(stft: &Stft, mode: StemMode, masks: &MaskSet) -> Vec<StemRender>
                 samples: inverse_stft(stft, &masks.residual),
             },
         ],
+        _ => unreachable!("local ML modes are dispatched through ml_engine"),
     }
 }
 
@@ -341,7 +343,7 @@ fn method_notes(mode: StemMode) -> Vec<String> {
     ];
     if mode == StemMode::VocalInstrumental {
         notes.push("Vocal estimate relies on non-repeating midrange foreground cues.".to_string());
-    } else {
+    } else if mode == StemMode::FullBand {
         notes.push(
             "Full-band layers combine HPSS, residual, and bass-band partitioning.".to_string(),
         );
@@ -356,6 +358,7 @@ fn reconstruction_error(audio: &AudioBuffer, mode: StemMode, stems: &[StemRender
             .iter()
             .filter(|stem| stem.filename != "instrumental_sum.wav")
             .collect::<Vec<_>>(),
+        _ => unreachable!("local ML modes are dispatched through ml_engine"),
     };
 
     let mut error_energy = 0.0_f64;

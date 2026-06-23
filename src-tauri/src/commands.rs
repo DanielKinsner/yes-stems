@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    audio_io, separation,
+    audio_io, ml_engine, separation,
     types::{ExtractRequest, ExtractionReport, ProgressEvent, TrackAnalysis},
 };
 
@@ -28,23 +28,25 @@ pub async fn extract_stems(
         let mode = request.mode;
         let progress_app = app.clone();
 
-        separation::extract_track_to_directory(
-            &input_path,
-            &output_dir,
-            mode,
-            move |phase, progress, detail| {
-                let _ = progress_app.emit(
-                    "stems://progress",
-                    ProgressEvent {
-                        phase: phase.to_string(),
-                        progress,
-                        detail,
-                    },
-                );
-            },
-        )
+        let emit_progress = move |phase: &str, progress: f32, detail: String| {
+            let _ = progress_app.emit(
+                "stems://progress",
+                ProgressEvent {
+                    phase: phase.to_string(),
+                    progress,
+                    detail,
+                },
+            );
+        };
+
+        if mode.is_local_ml() {
+            ml_engine::extract_track_to_directory(&input_path, &output_dir, mode, emit_progress)
+                .map_err(|error| error.to_string())
+        } else {
+            separation::extract_track_to_directory(&input_path, &output_dir, mode, emit_progress)
+                .map_err(|error| error.to_string())
+        }
     })
     .await
     .map_err(|error| error.to_string())?
-    .map_err(|error| error.to_string())
 }
