@@ -127,8 +127,8 @@ function App() {
   const [mode, setMode] = useState<StemMode>("localMlSix");
   const [aggressiveness, setAggressiveness] = useState(5);
   const [artifactReduction, setArtifactReduction] = useState(5);
-  const [cleanupEnabled, setCleanupEnabled] = useState(true);
-  const [cleanupStrength, setCleanupStrength] = useState(4);
+  const [cleanupEnabled, setCleanupEnabled] = useState(false);
+  const [cleanupStrength, setCleanupStrength] = useState(2);
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(null);
   const [localMlStatus, setLocalMlStatus] = useState<LocalMlStatus | null>(null);
   const [report, setReport] = useState<ExtractionReport | null>(null);

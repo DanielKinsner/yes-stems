@@ -23,7 +23,11 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": []
+        "scope": [
+          "$APPDATA/working-stems/**",
+          "$APPLOCALDATA/working-stems/**",
+          "$TEMP/yes-stems/working-stems/**"
+        ]
       }
     }
   },

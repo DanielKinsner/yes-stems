@@ -165,8 +165,8 @@ describe("YES Stems app", () => {
           artifactReduction: 5,
         },
         cleanup: {
-          enabled: true,
-          strength: 4,
+          enabled: false,
+          strength: 2,
         },
       },
     });
@@ -283,8 +283,8 @@ describe("YES Stems app", () => {
           artifactReduction: 2,
         },
         cleanup: {
-          enabled: true,
-          strength: 4,
+          enabled: false,
+          strength: 2,
         },
       },
     });
@@ -313,7 +313,7 @@ describe("YES Stems app", () => {
         frames: 132_300,
         durationSeconds: 3,
         reconstructionError: -1,
-        methodNotes: ["cleanup disabled by request"],
+        methodNotes: ["cleanup enabled by request"],
         stems: [],
       });
 
@@ -328,7 +328,7 @@ describe("YES Stems app", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Run extraction/i }));
 
-    await screen.findByText(/cleanup disabled/i);
+    await screen.findByText(/cleanup enabled/i);
     expect(tauriMocks.invoke).toHaveBeenLastCalledWith("extract_stems", {
       request: {
         inputPath: "C:\\music\\song.wav",
@@ -338,7 +338,7 @@ describe("YES Stems app", () => {
           artifactReduction: 5,
         },
         cleanup: {
-          enabled: false,
+          enabled: true,
           strength: 7,
         },
       },

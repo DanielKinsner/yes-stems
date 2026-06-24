@@ -98,7 +98,7 @@ Frontend tests should cover:
 - selected mode copy and stem expectations.
 - disabled run states.
 - progress/result rendering.
-- cleanup option request wiring.
+- cleanup option request wiring, including off-by-default behavior.
 - no visible cloud/API extraction claims.
 
 ## Optional Local ML Smoke

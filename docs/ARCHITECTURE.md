@@ -17,8 +17,9 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 - Advanced aggressiveness/artifact-reduction controls are enabled only for
   classic DSP modes. Local ML modes disable them because the Demucs boundary
   does not safely consume those product-level controls.
-- Stem cleanup controls are enabled across modes because cleanup is a local
-  post-process after stem rendering, not an inference or mask parameter.
+- Stem cleanup controls are available across modes but default off because
+  cleanup is a local post-process after stem rendering, not an inference or
+  mask parameter.
 - The desktop workspace is optimized for `1280x800` with a `1120x720`
   minimum window so the setup rail, analysis stage, processing console, and
   results rack remain visible together.

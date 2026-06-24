@@ -46,9 +46,10 @@ with `npm run build:windows:standalone`.
 3. For classic DSP modes, optionally adjust aggressiveness and artifact
    reduction before running extraction. Local ML modes keep these controls
    disabled because Demucs does not consume those product-level settings.
-4. Optionally enable stem cleanup. Cleanup is a real post-process across local
-   ML and classic DSP stems: it removes DC offset, clamps non-finite samples,
-   applies short edge fades, and softly reduces low-level bleed.
+4. Optionally enable stem cleanup. Cleanup is off by default and is a real
+   post-process across local ML and classic DSP stems: it removes DC offset,
+   clamps non-finite samples, applies short edge fades, and softly reduces
+   low-level bleed.
 5. Run extraction with visible progress. Extraction writes to an app-managed
    working folder so the user does not need to choose an output destination up
    front.
