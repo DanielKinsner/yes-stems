@@ -1,6 +1,6 @@
 # UI Reference
 
-`yes-stems-ui-reference.webp` is the target design for the YES Stems desktop UI.
+`yes-stems-ui-reference.png` is the target design for the YES Stems desktop UI.
 
 It is the visual north star the app's layout is built against: a teal/cyan accent
 on a deep navy shell, a centered mode dropdown in the title bar, a left setup rack
