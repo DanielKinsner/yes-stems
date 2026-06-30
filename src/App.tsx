@@ -789,7 +789,7 @@ function App() {
                 <span>{sourceMeta}</span>
               </div>
             </div>
-            <button className="ghost-button" type="button" onClick={chooseInput} disabled={isExtracting || isDemo}>
+            <button className="ghost-button" type="button" onClick={chooseInput} disabled={isExtracting}>
               <FolderOpen size={15} />
               <span>Change File</span>
             </button>
@@ -1146,7 +1146,7 @@ function App() {
                 className="tbtn play"
                 type="button"
                 aria-label={isPlaying ? "Stop preview" : "Play preview"}
-                disabled={!report || !hasTauriRuntime()}
+                disabled={!report}
                 onClick={togglePlay}
               >
                 {isPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
@@ -1155,7 +1155,7 @@ function App() {
                 className="tbtn stop"
                 type="button"
                 aria-label="Stop"
-                disabled={!report || !hasTauriRuntime()}
+                disabled={!report}
                 onClick={() => stopPlayback()}
               >
                 <Square size={15} fill="currentColor" />
@@ -1223,7 +1223,7 @@ function App() {
               <button
                 className="link-button"
                 type="button"
-                disabled={!report || !hasTauriRuntime()}
+                disabled={!report}
                 onClick={() => revealOutput()}
               >
                 <Eye size={13} />
@@ -1278,7 +1278,7 @@ function App() {
             <button
               className="export-button"
               type="button"
-              disabled={!report || isExporting || !hasTauriRuntime()}
+              disabled={!report || isExporting}
               onClick={exportAll}
             >
               <FolderInput size={17} />
