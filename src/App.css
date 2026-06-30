@@ -1519,10 +1519,8 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
-  border: 1px solid rgba(47, 224, 207, 0.35);
-  border-radius: 999px;
-  background: rgba(47, 224, 207, 0.08);
+  padding: 4px 3px 6px;
+  border-bottom: 2px solid var(--accent);
 }
 
 .ready.busy {
@@ -1530,8 +1528,7 @@ p {
 }
 
 .ready.busy .pill {
-  border-color: rgba(242, 184, 75, 0.4);
-  background: rgba(242, 184, 75, 0.1);
+  border-bottom-color: var(--amber);
 }
 
 @media (max-width: 1180px) {

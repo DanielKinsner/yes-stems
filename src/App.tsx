@@ -1336,7 +1336,7 @@ function App() {
 
         <div className={`ready ${isExtracting ? "busy" : ""}`}>
           <span className="pill">
-            {isExtracting ? <BarChart3 size={13} /> : <CheckCircle2 size={13} />}
+            {isExtracting ? <BarChart3 size={13} /> : <AudioWaveform size={13} />}
             {isExtracting ? "WORKING" : "READY"}
           </span>
         </div>
