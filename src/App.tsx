@@ -152,9 +152,9 @@ const experimentalNote =
 
 // Demo dataset — only seeded when running outside Tauri (browser preview used for
 // screenshots and design review). Real desktop builds always hydrate from the backend.
-const demoWaveform = Array.from({ length: 160 }, (_, i) => {
-  const env = 0.35 + 0.5 * Math.abs(Math.sin(i * 0.21) + 0.4 * Math.sin(i * 0.07 + 1.1));
-  const detail = 0.6 + 0.4 * Math.abs(Math.sin(i * 1.7));
+const demoWaveform = Array.from({ length: 220 }, (_, i) => {
+  const env = 0.4 + 0.42 * Math.abs(Math.sin(i * 0.12) + 0.5 * Math.sin(i * 0.045 + 1.1));
+  const detail = 0.55 + 0.45 * Math.abs(Math.sin(i * 1.9) + 0.3 * Math.sin(i * 0.73));
   return Math.min(1, env * detail);
 });
 
@@ -816,7 +816,7 @@ function App() {
                   </span>
                   <span>
                     <strong>{modeDetails[key].label}</strong>
-                    <small>{modeDetails[key].tag}</small>
+                    {mode === key ? <small>{modeDetails[key].tag}</small> : null}
                   </span>
                 </button>
               ))}
@@ -1018,19 +1018,21 @@ function App() {
             <div className="info-strip">
               <div className="item">
                 <span className="glyph" aria-hidden="true">
-                  <Settings size={15} />
+                  <Settings size={13} />
                 </span>
                 <div>
                   <span>Mode</span>
                   <div className="val">
-                    {selectedMode.label} ({selectedMode.model})
+                    <span className="txt">
+                      {selectedMode.label} ({selectedMode.model})
+                    </span>
                     {localMode ? <span className="badge">Local</span> : null}
                   </div>
                 </div>
               </div>
               <div className="item">
                 <span className="glyph" aria-hidden="true">
-                  <CheckCircle2 size={15} />
+                  <CheckCircle2 size={13} />
                 </span>
                 <div>
                   <span>Status</span>
@@ -1042,7 +1044,7 @@ function App() {
               </div>
               <div className="item">
                 <span className="glyph" aria-hidden="true">
-                  <Clock size={15} />
+                  <Clock size={13} />
                 </span>
                 <div>
                   <span>Duration</span>
@@ -1051,7 +1053,7 @@ function App() {
               </div>
               <div className="item">
                 <span className="glyph" aria-hidden="true">
-                  <Waves size={15} />
+                  <Waves size={13} />
                 </span>
                 <div>
                   <span>Sample Rate</span>
@@ -1468,7 +1470,7 @@ function stemWave(seed: string): number[] {
   for (let i = 0; i < seed.length; i += 1) {
     hash = (hash * 31 + seed.charCodeAt(i)) % 100000;
   }
-  return Array.from({ length: 48 }, (_, i) => {
+  return Array.from({ length: 64 }, (_, i) => {
     const value = Math.abs(Math.sin((i + 1) * (0.3 + (hash % 17) / 40) + hash));
     const env = 0.45 + 0.55 * Math.abs(Math.sin(i * 0.18 + (hash % 7)));
     return Math.min(1, 0.2 + value * env);
