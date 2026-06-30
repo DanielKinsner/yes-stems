@@ -132,6 +132,7 @@ pub struct StemFile {
     pub path: String,
     pub frames: usize,
     pub peak: f32,
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

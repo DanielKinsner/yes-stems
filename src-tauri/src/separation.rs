@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, path::Path};
+use std::{f32::consts::PI, fs, path::Path};
 
 use rustfft::{FftPlanner, num_complex::Complex};
 use thiserror::Error;
@@ -91,12 +91,14 @@ where
         clamp_audio(&mut stem.samples);
         let path = output_dir.join(stem.filename);
         audio_io::write_wav(&path, audio.sample_rate, &stem.samples)?;
+        let bytes = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
         stem_files.push(StemFile {
             name: stem.name.to_string(),
             role: stem.role.to_string(),
             path: path.to_string_lossy().to_string(),
             frames: stem.samples.first().map_or(0, Vec::len),
             peak: audio_io::peak(&stem.samples),
+            bytes,
         });
     }
 

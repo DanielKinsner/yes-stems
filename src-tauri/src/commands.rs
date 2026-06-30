@@ -170,6 +170,7 @@ mod tests {
             path: path.to_string_lossy().to_string(),
             frames: 1,
             peak: 0.5,
+            bytes: 6,
         }
     }
 

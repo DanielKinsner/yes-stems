@@ -154,12 +154,14 @@ where
         }
         audio = audio_io::decode_audio(&target)?;
         validate_stem_shape(&audio, &analysis, stem.name)?;
+        let bytes = fs::metadata(&target).map(|meta| meta.len()).unwrap_or(0);
         stem_files.push(StemFile {
             name: stem.name.to_string(),
             role: stem.role.to_string(),
             path: target.to_string_lossy().to_string(),
             frames: audio.frames(),
             peak: audio.peak(),
+            bytes,
         });
     }
 
