@@ -189,7 +189,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - CSP is `null` — acceptable for local-only but unhardened.
 - Version is duplicated and **manually pinned** in three files (no bump script).
 - Demucs sidecar is bundled as a `resource`, not registered as a Tauri `externalBin` sidecar — bypasses Tauri's sidecar permission model.
-- `package-lock.json` is gitignored — npm resolution is non-reproducible across builds.
+- `package-lock.json` is now committed (and no longer gitignored) for reproducible npm resolution.
 
 **Gaps**
 - **No CI/CD** (`.github/workflows/` does not exist).
@@ -330,7 +330,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [ ] Pin `bundle.targets` to `["nsis", "msi"]` for Windows; create separate macOS DMG and Linux AppImage lanes.
 - [ ] Add `tauri-plugin-updater`; sign updates with a published `pubkey`; host an update manifest.
 - [ ] Add a single `version-bump` script that updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` together.
-- [ ] Commit `package-lock.json` for reproducible npm resolution.
+- [x] Commit `package-lock.json` for reproducible npm resolution (and remove it from `.gitignore`).
 - [ ] Fix `Cargo.toml` description to match current PRODUCT positioning (drop "non-AI").
 - [ ] Maintain `CHANGELOG.md` (Keep-a-Changelog format).
 - [ ] Generate SBOM + third-party-attribution NOTICE during the build.
