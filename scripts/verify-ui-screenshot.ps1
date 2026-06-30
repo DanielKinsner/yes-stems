@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$Path = "docs/screenshots/yes-stems-installed-app.png",
-  [int]$ExpectedWidth = 1280,
-  [int]$ExpectedHeight = 800
+  [int]$ExpectedWidth = 1440,
+  [int]$ExpectedHeight = 820
 )
 
 $ErrorActionPreference = "Stop"

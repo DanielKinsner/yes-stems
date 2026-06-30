@@ -2,8 +2,8 @@
 param(
   [string]$Url = "http://127.0.0.1:4173/",
   [string]$Output = "docs/screenshots/yes-stems-installed-app.png",
-  [int]$Width = 1280,
-  [int]$Height = 800
+  [int]$Width = 1440,
+  [int]$Height = 820
 )
 
 $ErrorActionPreference = "Stop"

@@ -934,7 +934,7 @@ function App() {
               Source
               <ChevronDown size={12} />
             </span>
-            <span className="range-pill">
+            <span className="range-time">
               {analysis ? `${formatTimecodeMs(0)} — ${durationCode}` : "0:00.000 — --:--.---"}
             </span>
             <button className="icon-button" type="button" aria-label="Fullscreen" title="Fullscreen is not available in this build." disabled>

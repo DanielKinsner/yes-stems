@@ -617,13 +617,13 @@ p {
 .stage-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   padding: 6px 8px;
 }
 
 .stage-tabs .tab {
   height: 30px;
-  padding: 0 12px;
+  padding: 0 10px;
   color: var(--muted);
   border: 0;
   border-radius: 7px;
@@ -641,7 +641,7 @@ p {
 
 .stage-tabs .tab.active {
   color: var(--accent);
-  background: rgba(47, 224, 207, 0.1);
+  background: transparent;
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
@@ -665,6 +665,17 @@ p {
 
 .range-pill.dim {
   color: var(--muted);
+}
+
+.range-time {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .viz-module {
