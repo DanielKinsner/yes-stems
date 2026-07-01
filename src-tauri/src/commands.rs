@@ -1,6 +1,10 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -13,6 +17,23 @@ use crate::{
         ProgressEvent, TrackAnalysis,
     },
 };
+
+/// Shared extraction state. The `running` flag guards against concurrent `extract_stems`
+/// invocations so two runs cannot each allocate full-song spectra or spawn Demucs at once.
+#[derive(Default)]
+pub struct ExtractionState {
+    running: Arc<AtomicBool>,
+}
+
+/// RAII guard that clears the `running` flag when an extraction finishes — including on
+/// early return, error, or if the command future is dropped (e.g. window closed).
+struct RunningGuard(Arc<AtomicBool>);
+
+impl Drop for RunningGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 #[tauri::command]
 pub async fn analyze_track(input_path: String) -> Result<TrackAnalysis, String> {
@@ -36,7 +57,20 @@ pub async fn check_local_ml_runtime(app: AppHandle) -> Result<LocalMlStatus, Str
 pub async fn extract_stems(
     app: AppHandle,
     request: ExtractRequest,
+    state: tauri::State<'_, ExtractionState>,
 ) -> Result<ExtractionReport, String> {
+    let running = state.running.clone();
+    if running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(
+            "An extraction is already running. Wait for it to finish before starting another."
+                .to_string(),
+        );
+    }
+    let _guard = RunningGuard(running);
+
     let resource_dir = app.path().resource_dir().ok();
     let managed_output_root = managed_working_root(app.path().app_data_dir().ok().as_deref());
     tauri::async_runtime::spawn_blocking(move || {
@@ -223,6 +257,39 @@ mod tests {
 
         assert_eq!(result.exported_files, 1);
         assert_eq!(PathBuf::from(result.export_dir), export_dir);
+    }
+
+    #[test]
+    fn running_guard_blocks_reentry_then_resets_on_drop() {
+        let state = ExtractionState::default();
+        assert!(!state.running.load(Ordering::SeqCst));
+
+        // First acquisition wins.
+        assert!(
+            state
+                .running
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        );
+        {
+            let _guard = RunningGuard(state.running.clone());
+            // A concurrent attempt is rejected while the guard is alive.
+            assert!(
+                state
+                    .running
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_err()
+            );
+        }
+
+        // Dropping the guard frees the slot for the next run.
+        assert!(!state.running.load(Ordering::SeqCst));
+        assert!(
+            state
+                .running
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        );
     }
 
     #[test]
