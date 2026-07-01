@@ -382,12 +382,20 @@ pub fn write_wav_encoded(
         sample_format,
     };
 
+    // Dropping to 16-bit gets TPDF dither (±1 LSB triangular noise) to decorrelate the
+    // quantization error; 24-bit already matches the working depth and float is exact.
+    let mut dither_state = 0x9E37_79B9_7F4A_7C15_u64;
+    const LSB16: f32 = 1.0 / 32_767.0;
+
     let mut writer = hound::WavWriter::create(path, spec)?;
     for frame_index in 0..frames {
         for channel in samples {
             let sample = channel[frame_index];
             match encoding {
-                WavEncoding::Int16 => writer.write_sample(float_to_i16(sample))?,
+                WavEncoding::Int16 => {
+                    let dithered = sample + tpdf(&mut dither_state) * LSB16;
+                    writer.write_sample(float_to_i16(dithered))?;
+                }
                 WavEncoding::Int24 => writer.write_sample(float_to_i24(sample))?,
                 WavEncoding::Float32 => writer.write_sample(sample.clamp(-1.0, 1.0))?,
             }
@@ -395,6 +403,18 @@ pub fn write_wav_encoded(
     }
     writer.finalize()?;
     Ok(())
+}
+
+/// Triangular-PDF dither in [-1, 1) LSB, from two uniform samples of a small xorshift PRNG.
+fn tpdf(state: &mut u64) -> f32 {
+    uniform01(state) - uniform01(state)
+}
+
+fn uniform01(state: &mut u64) -> f32 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    ((*state >> 11) as f64 / (1_u64 << 53) as f64) as f32
 }
 
 /// Encode stems as FLAC (lossless, 24-bit) with the pure-Rust `flacenc` encoder.
