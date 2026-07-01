@@ -93,6 +93,7 @@ pub enum ExportFormat {
     #[default]
     Wav24,
     Wav32f,
+    Flac,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

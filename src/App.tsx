@@ -50,7 +50,7 @@ import "./App.css";
 type StemMode = "localMlSix" | "localMlFour" | "vocalInstrumental" | "fullBand";
 type StageTab = "overview" | "spectrum" | "loudness" | "metrics";
 type PlayMode = "sequence" | "all";
-type ExportFormat = "wav16" | "wav24" | "wav32f";
+type ExportFormat = "wav16" | "wav24" | "wav32f" | "flac";
 
 type TrackAnalysis = {
   fileName: string;
@@ -330,7 +330,7 @@ function App() {
   );
   const [exportFormat, setExportFormat] = useState<ExportFormat>(() =>
     loadPersisted<ExportFormat>("exportFormat", "wav24", (raw) =>
-      raw === "wav16" || raw === "wav24" || raw === "wav32f" ? raw : "wav24",
+      raw === "wav16" || raw === "wav24" || raw === "wav32f" || raw === "flac" ? raw : "wav24",
     ),
   );
   const [defaultExportDir, setDefaultExportDir] = useState(() =>
@@ -1696,6 +1696,7 @@ function App() {
                 <option value="wav24">WAV · 24-bit</option>
                 <option value="wav16">WAV · 16-bit</option>
                 <option value="wav32f">WAV · 32-bit float</option>
+                <option value="flac">FLAC · lossless</option>
               </select>
             </label>
           </section>

@@ -195,12 +195,11 @@ fn export_stems_to_directory(request: ExportStemsRequest) -> Result<ExportStemsR
         )
     })?;
 
-    // 24-bit is the on-disk working format, so that export is a fast copy; other formats
-    // decode the working WAV and re-encode at the requested bit depth.
-    let encoding = match request.format {
-        ExportFormat::Wav24 => None,
-        ExportFormat::Wav16 => Some(WavEncoding::Int16),
-        ExportFormat::Wav32f => Some(WavEncoding::Float32),
+    // 24-bit WAV is the on-disk working format, so exporting it is a fast copy; other
+    // formats decode the working WAV and re-encode (WAV bit depths, or FLAC).
+    let extension = match request.format {
+        ExportFormat::Wav16 | ExportFormat::Wav24 | ExportFormat::Wav32f => "wav",
+        ExportFormat::Flac => "flac",
     };
 
     let mut exported_files = 0;
@@ -210,13 +209,14 @@ fn export_stems_to_directory(request: ExportStemsRequest) -> Result<ExportStemsR
             return Err(format!("cannot export missing stem {}", source.display()));
         }
 
-        let file_name = source
-            .file_name()
+        let stem_name = source
+            .file_stem()
+            .and_then(|value| value.to_str())
             .ok_or_else(|| format!("cannot export stem with invalid path {}", source.display()))?;
-        let target = export_dir.join(file_name);
+        let target = export_dir.join(format!("{stem_name}.{extension}"));
 
-        match encoding {
-            None => {
+        match request.format {
+            ExportFormat::Wav24 => {
                 if !same_file(&source, &target) {
                     fs::copy(&source, &target).map_err(|error| {
                         format!(
@@ -227,15 +227,32 @@ fn export_stems_to_directory(request: ExportStemsRequest) -> Result<ExportStemsR
                     })?;
                 }
             }
-            Some(encoding) => {
+            other => {
                 let audio = audio_io::decode_audio(&source).map_err(|error| {
                     format!(
                         "could not read {} for re-encoding: {error}",
                         source.display()
                     )
                 })?;
-                audio_io::write_wav_encoded(&target, audio.sample_rate, &audio.samples, encoding)
-                    .map_err(|error| format!("could not write {}: {error}", target.display()))?;
+                let write = match other {
+                    ExportFormat::Wav16 => audio_io::write_wav_encoded(
+                        &target,
+                        audio.sample_rate,
+                        &audio.samples,
+                        WavEncoding::Int16,
+                    ),
+                    ExportFormat::Wav32f => audio_io::write_wav_encoded(
+                        &target,
+                        audio.sample_rate,
+                        &audio.samples,
+                        WavEncoding::Float32,
+                    ),
+                    ExportFormat::Flac => {
+                        audio_io::write_flac(&target, audio.sample_rate, &audio.samples)
+                    }
+                    ExportFormat::Wav24 => unreachable!("24-bit is handled by the copy path"),
+                };
+                write.map_err(|error| format!("could not write {}: {error}", target.display()))?;
             }
         }
         exported_files += 1;

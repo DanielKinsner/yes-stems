@@ -41,6 +41,8 @@ pub enum AudioIoError {
     NonFiniteSamples,
     #[error("could not write wav file: {0}")]
     Wav(#[from] hound::Error),
+    #[error("could not encode audio: {0}")]
+    Encode(String),
 }
 
 #[derive(Clone, Debug)]
@@ -395,6 +397,44 @@ pub fn write_wav_encoded(
     Ok(())
 }
 
+/// Encode stems as FLAC (lossless, 24-bit) with the pure-Rust `flacenc` encoder.
+///
+/// Note: the fixed-block encoder zero-pads the final partial block, so the file can carry up
+/// to one block (~93 ms at 44.1 kHz) of trailing silence beyond the source length. It is
+/// lossless for the real audio, and STREAMINFO carries the true sample count.
+pub fn write_flac(path: &Path, sample_rate: u32, samples: &[Vec<f32>]) -> Result<(), AudioIoError> {
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+
+    let (channels, frames) = validate_samples(samples)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut interleaved = Vec::with_capacity(frames * channels);
+    for frame_index in 0..frames {
+        for channel in samples {
+            interleaved.push(float_to_i24(channel[frame_index]));
+        }
+    }
+
+    let config = flacenc::config::Encoder::default()
+        .into_verified()
+        .map_err(|_| AudioIoError::Encode("invalid FLAC encoder config".to_string()))?;
+    let source =
+        flacenc::source::MemSource::from_samples(&interleaved, channels, 24, sample_rate as usize);
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size)
+        .map_err(|error| AudioIoError::Encode(format!("FLAC encode failed: {error:?}")))?;
+
+    let mut sink = flacenc::bitsink::ByteSink::new();
+    stream
+        .write(&mut sink)
+        .map_err(|error| AudioIoError::Encode(format!("FLAC serialization failed: {error:?}")))?;
+    std::fs::write(path, sink.as_slice())
+        .map_err(|error| AudioIoError::Encode(format!("could not write FLAC file: {error}")))?;
+    Ok(())
+}
+
 pub fn peak(samples: &[Vec<f32>]) -> f32 {
     samples
         .iter()
@@ -505,6 +545,37 @@ mod tests {
                 "right {decoded} vs {original}"
             );
         }
+    }
+
+    #[test]
+    fn flac_export_roundtrips_losslessly() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("stem.flac");
+        let left: Vec<f32> = (0..1500).map(|i| (i as f32 * 0.03).sin() * 0.7).collect();
+        let right: Vec<f32> = (0..1500).map(|i| (i as f32 * 0.05).cos() * 0.4).collect();
+        write_flac(&path, 44_100, &[left.clone(), right.clone()]).expect("write flac");
+
+        let audio = decode_audio(&path).expect("decode flac");
+
+        assert_eq!(audio.sample_rate, 44_100);
+        assert_eq!(audio.channels, 2);
+        // FLAC is lossless; the first `frames` decoded 24-bit samples match the originals.
+        assert!(audio.frames() >= 1500);
+        for (decoded, original) in audio.samples[0].iter().take(1500).zip(&left) {
+            assert!(
+                (decoded - original).abs() < 1.0e-3,
+                "flac L {decoded} vs {original}"
+            );
+        }
+        // Any frames beyond the source length must be silence (a padded final block).
+        let tail_max = audio.samples[0]
+            .iter()
+            .skip(1500)
+            .fold(0.0_f32, |acc, &sample| acc.max(sample.abs()));
+        assert!(
+            tail_max < 1.0e-3,
+            "flac padding should be silence, got {tail_max}"
+        );
     }
 
     #[test]
