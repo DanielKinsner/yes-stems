@@ -378,6 +378,39 @@ describe("YES Stems app", () => {
     });
   });
 
+  it("seeks playback when the scrubber is clicked", async () => {
+    withTauri();
+    const { play } = stubAudio();
+    tauriMocks.open.mockResolvedValueOnce("C:\\music\\song.wav");
+    setupInvoke({ analysis: analysisFor("song"), report: sixStemReport });
+
+    const { container } = render(<App />);
+
+    await selectSourceAndArm();
+    fireEvent.click(screen.getByRole("button", { name: /Run Extraction/i }));
+    await screen.findByText("98.2 MB");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Play preview" }));
+    await waitFor(() => expect(play).toHaveBeenCalled());
+
+    const scrub = container.querySelector(".scrub") as HTMLElement;
+    scrub.getBoundingClientRect = () => ({
+      left: 0,
+      width: 100,
+      top: 0,
+      right: 100,
+      bottom: 6,
+      height: 6,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(scrub, { clientX: 50, pointerId: 1 });
+
+    const knob = container.querySelector(".scrub .knob") as HTMLElement;
+    expect(knob.style.left).toBe("50%");
+  });
+
   it("exports completed stems to a chosen folder", async () => {
     withTauri();
     tauriMocks.open

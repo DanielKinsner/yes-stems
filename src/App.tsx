@@ -303,6 +303,7 @@ function App() {
   const playTokenRef = useRef(0);
   const selectionAnchorRef = useRef(0);
   const timelineDraggingRef = useRef(false);
+  const scrubbingRef = useRef(false);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -716,8 +717,29 @@ function App() {
     audioRef.current = audio;
     setAuditionPath(path);
     setIsPlaying(true);
+    // If the user dragged a partial timeline selection, audition just that region.
+    const selStart = selectionStart;
+    const selEnd = selectionEnd;
+    const hasSelection = selEnd - selStart > 0.01 && selEnd - selStart < 0.999;
+    if (hasSelection) {
+      audio.addEventListener("loadedmetadata", () => {
+        if (playTokenRef.current === token && Number.isFinite(audio.duration)) {
+          audio.currentTime = selStart * audio.duration;
+        }
+      });
+    }
     audio.addEventListener("timeupdate", () => {
       if (playTokenRef.current !== token) {
+        return;
+      }
+      if (
+        hasSelection &&
+        Number.isFinite(audio.duration) &&
+        audio.currentTime >= selEnd * audio.duration
+      ) {
+        audio.pause();
+        setIsPlaying(false);
+        setAuditionPath("");
         return;
       }
       setPlayhead({ current: audio.currentTime, total: audio.duration || playhead.total });
@@ -889,6 +911,80 @@ function App() {
 
   function handleTimelinePointerCancel() {
     timelineDraggingRef.current = false;
+  }
+
+  function seekTo(ratio: number) {
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const active = audioRef.current;
+    const concurrent = allAudioRef.current;
+    const durationOf = (el: HTMLAudioElement | null) =>
+      el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
+
+    if (active) {
+      const total = durationOf(active) || playhead.total || analysis?.durationSeconds || 0;
+      if (total > 0) {
+        active.currentTime = clamped * total;
+        setPlayhead({ current: active.currentTime, total });
+      }
+      return;
+    }
+    if (concurrent.length > 0) {
+      const total = durationOf(concurrent[0]) || playhead.total || analysis?.durationSeconds || 0;
+      if (total > 0) {
+        for (const el of concurrent) {
+          if (durationOf(el) > 0) {
+            el.currentTime = clamped * total;
+          }
+        }
+        setPlayhead({ current: clamped * total, total });
+      }
+      return;
+    }
+    // Nothing playing — move the visual playhead so the position is ready for the next play.
+    const total = playhead.total || analysis?.durationSeconds || 0;
+    if (total > 0) {
+      setPlayhead({ current: clamped * total, total });
+    }
+  }
+
+  function scrubRatioFromEvent(event: ReactPointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return 0;
+    }
+    return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+  }
+
+  function handleScrubPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!report) {
+      return;
+    }
+    scrubbingRef.current = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // pointer not capturable (e.g. synthetic event) — dragging still works via state
+    }
+    seekTo(scrubRatioFromEvent(event));
+  }
+
+  function handleScrubPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!scrubbingRef.current) {
+      return;
+    }
+    seekTo(scrubRatioFromEvent(event));
+  }
+
+  function handleScrubPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!scrubbingRef.current) {
+      return;
+    }
+    scrubbingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // capture was never established — nothing to release
+    }
   }
 
   return (
@@ -1367,7 +1463,18 @@ function App() {
               </span>
             </div>
 
-            <div className="scrub">
+            <div
+              className={`scrub ${report ? "interactive" : ""}`}
+              role="slider"
+              aria-label="Seek"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(scrubPercent(playhead))}
+              onPointerDown={handleScrubPointerDown}
+              onPointerMove={handleScrubPointerMove}
+              onPointerUp={handleScrubPointerUp}
+              onPointerCancel={handleScrubPointerUp}
+            >
               <div className="done" style={{ width: `${scrubPercent(playhead)}%` }} />
               <div className="knob" style={{ left: `${scrubPercent(playhead)}%` }} />
             </div>

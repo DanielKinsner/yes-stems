@@ -1270,6 +1270,22 @@ p {
   align-self: center;
   border-radius: 999px;
   background: #232c3c;
+  touch-action: none;
+}
+
+.scrub.interactive {
+  cursor: pointer;
+}
+
+.scrub.interactive::before {
+  /* Enlarge the pointer hit area above/below the 6px bar without changing its look. */
+  content: "";
+  position: absolute;
+  inset: -7px 0;
+}
+
+.scrub.interactive:hover .knob {
+  box-shadow: 0 0 0 4px rgba(47, 224, 207, 0.3);
 }
 
 .scrub .done {
