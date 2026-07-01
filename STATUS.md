@@ -15,8 +15,8 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 | Version | `0.1.0` (pinned in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`) |
 | Platform target | Windows (Tauri 2 NSIS + MSI); macOS/Linux targets configured but not exercised |
 | Stack | React 19 + TypeScript + Vite (frontend) · Tauri 2 + Rust (shell + commands) · Symphonia / RustFFT / hound (DSP) · PyInstaller-bundled Demucs sidecar (local ML) |
-| Verification | GREEN — 15 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 24 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design 1:1 |
-| CI | None (no `.github/workflows/`) — verification is local-only via `npm run verify:*` |
+| Verification | GREEN — 16 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 28 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design 1:1 |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) runs `verify:frontend` + `verify:rust` on push/PR (windows-latest) |
 
 ---
 
@@ -123,7 +123,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Cleanup pass with DC removal, percentile-based quiet-bleed suppression (~30th percentile via every-16th-sample estimator), and 2–6 ms edge fades scaled by strength.
 - Export is conservative: sanitized ASCII folder name, parent-dir creation, same-file guard via `canonicalize`.
 - Per-run working folder under `app_data_dir/working-stems/` keeps each run isolated from user export targets.
-- 24 Rust unit tests across `separation.rs`, `stem_cleanup.rs`, `ml_engine.rs`, `audio_io.rs`, `commands.rs` — STFT roundtrip RMS < 0.005, mask differentiation under tuning, cleanup notes, ASCII-safe workspace, WAV spec invariants.
+- 28 Rust unit tests across `separation.rs`, `stem_cleanup.rs`, `ml_engine.rs`, `audio_io.rs`, `commands.rs` — STFT roundtrip RMS < 0.005, mask differentiation under tuning, cleanup notes, ASCII-safe workspace, WAV spec invariants.
 
 **Partial / demo-only**
 - `StemFile.bytes` is the on-disk file size captured at write time — purely a UI hint; can lie if the file is later replaced.
@@ -132,7 +132,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Cleanup on the ML path silently re-decodes Demucs output and re-encodes via the 24-bit Int writer; cleanup-on vs cleanup-off produces different file headers.
 
 **Gaps**
-- **No cancellation** anywhere — no token, no `Child` handle for the Demucs subprocess; once started, only killing the app stops it.
+- ~~No cancellation~~ — **done**: a `CancelToken` (`src-tauri/src/cancel.rs`) is checked by the DSP path and registers the Demucs `Child` for kill; `cancel_extraction` command + UI Stop button.
 - **Whole-file in-memory processing** — `decode_audio` + `compute_stft` can spike to ~800 MB+ of spectra for a 5-minute stereo song. Tests only cover 0.5 s synthetic clips. OOM risk on 8 GB machines.
 - Single-threaded DSP (no rayon); STFT and N inverse passes are sequential per channel.
 - **Output format locked to 24-bit Int WAV** — no 16-bit, no 32-bit float, no FLAC/AIFF/MP3/AAC, no dithering on float→i24 truncation.
@@ -192,12 +192,12 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - `package-lock.json` is now committed (and no longer gitignored) for reproducible npm resolution.
 
 **Gaps**
-- **No CI/CD** (`.github/workflows/` does not exist).
+- **CI runs verify lanes** (`.github/workflows/ci.yml`); full installer build/release automation is still TODO.
 - **No code-signing** pipeline (no SignTool invocation, no PFX path, no `WindowsConfiguration.certificateThumbprint` / `signCommand` in `tauri.conf.json`).
 - **No Tauri updater plugin** or `plugins.updater` config — no auto-update channel.
 - No NSIS / WiX customization block — no `webviewInstallMode`, no per-user vs per-machine choice, no license page, no custom uninstall behavior.
-- No publisher / copyright / longDescription metadata; UAC and Add/Remove Programs will show empty fields.
-- No `CHANGELOG.md`.
+- ~~No publisher / copyright / longDescription metadata~~ — **done** in `tauri.conf.json` bundle (NSIS/WiX install-page tuning still TODO).
+- ~~No `CHANGELOG.md`~~ — **done** (Keep-a-Changelog).
 - No SBOM or license/attribution artifacts.
 - No CI gate that fails a bundle when `src-tauri/resources/demucs-runtime/demucs.exe` is missing.
 
@@ -205,7 +205,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 **Works**
 - 12 Vitest cases in `src/App.test.tsx` covering: default render, six-stem expectations, Classic DSP layer file list, full `extract_stems` request body, source replacement clearing stale report, classic tuning + cleanup-strength passthrough, pointer-drag timeline math, stem audition via `convertFileSrc`, transport Play, export round-trip incl. `openPath`.
-- 24 Rust unit tests across `stem_cleanup`, `separation`, `ml_engine`, `audio_io`, `commands` — including STFT roundtrip RMS < 0.005, mask differentiation under tuning, bundled runner sets `TORCH_HOME`, PYTHONUTF8 enforcement, non-ASCII source workspace, stem shape mismatch validation, export sanitized folder, working-root isolation.
+- 28 Rust unit tests across `stem_cleanup`, `separation`, `ml_engine`, `audio_io`, `commands` — including STFT roundtrip RMS < 0.005, mask differentiation under tuning, bundled runner sets `TORCH_HOME`, PYTHONUTF8 enforcement, non-ASCII source workspace, stem shape mismatch validation, export sanitized folder, working-root isolation.
 - `scripts/capture-ui-screenshot.ps1` regenerates `docs/screenshots/yes-stems-installed-app.png` via headless Chrome/Edge; `scripts/verify-ui-screenshot.ps1` asserts exact 1920×1080.
 - `scripts/assert-main-branch.ps1` blocks release flows from non-main branches.
 
@@ -252,7 +252,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - No customer-facing website/store-listing copy, no marketing assets beyond the engineering screenshot.
 - No onboarding / first-run UX, permissions explainer, or in-app docs.
 - No model-provenance / NOTICE / third-party-attribution doc covering Demucs, PyTorch, torchaudio, soundfile, Symphonia, RustFFT, hound, Tauri, React, lucide-react.
-- No `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`.
+- ~~No `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`~~ — **all added** (plus `NOTICE.md`, `PRIVACY.md`).
 - No documented network-call audit substantiating the no-uploads claim.
 - No user-friendly troubleshooting / FAQ for the common `MlEngineError::RuntimeUnavailable` path.
 - No supported-formats matrix, system-requirements, platform-coverage statement, or pricing/business-model doc.
@@ -283,10 +283,10 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - **Windows-only release lane.** macOS/Linux are configured in Tauri but have no sidecar build and no documented release path.
 - **No Authenticode signing yet.** SmartScreen and AV friction guaranteed on a clean Windows install; the bundled `demucs.exe` and its DLLs are also unsigned.
 - **No auto-update.** Versions ship as frozen artifacts.
-- **No CI.** All verification runs on one developer's machine; reproducibility depends on local Python 3.12 + .venv-demucs + PyInstaller 6.21.0 + Rust toolchain + WiX/NSIS.
+- **CI covers verify only.** GitHub Actions runs `verify:frontend` + `verify:rust` on push/PR, but full installer builds (Python 3.12 + .venv-demucs + PyInstaller + WiX/NSIS) still run on a developer's Windows machine.
 - **Local ML requires the bundled runtime.** A plain `tauri build` (without first running `build:demucs-sidecar`) produces an installer with zero local-ML capability and only the UI surfaces a tooltip-and-button explaining how to fix it.
 - **CPU-only inference.** No CUDA/MPS in the shipped binary; `htdemucs_6s` on a long stereo song is slow.
-- **No cancellation.** A click-Run cannot be aborted from the UI; killing the app is the only option.
+- ~~No cancellation~~ — **done**: a Stop button (and Esc) aborts a run and kills the Demucs child mid-run.
 - **Whole-file in-memory DSP.** Realistic 6–10 minute stereo tracks risk OOM on 8 GB machines; tests only cover 0.5 s synthetic clips.
 - **Output format locked to 24-bit WAV.** No 16-bit, 32-bit float, FLAC, or AIFF.
 - **`htdemucs_6s` guitar / piano heads are experimental** — labeled in UI and `PRODUCT.md`.
@@ -301,8 +301,8 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 ### Stage A — Product hardening *(close the UX cliff for v0.2)*
 - [x] Add a global React `ErrorBoundary` around `<App />` with a "copy diagnostics" button. *(src/ErrorBoundary.tsx, wired in main.tsx)*
-- [ ] Thread a cancel token through `commands.rs` → `separation.rs` / `ml_engine.rs`; keep the Demucs `Child` handle so it can be killed.
-- [ ] Surface a Stop button in the UI; wire to `cancel_extraction` Tauri command.
+- [x] Thread a cancel token through `commands.rs` → `separation.rs` / `ml_engine.rs`; the Demucs `Child` handle is registered so it can be killed mid-run (`src-tauri/src/cancel.rs`).
+- [x] Surface a Stop button in the UI (also Esc); wired to the `cancel_extraction` Tauri command.
 - [ ] Implement Settings panel: default output folder, ML device override, cleanup defaults, theme toggle.
 - [x] Persist mode, cleanup defaults, volume, last folder (`localStorage`, desktop-only guard). *(window size still TODO)*
 - [x] Add keyboard shortcuts: Space/Esc for transport, Ctrl+O to open file, 1–4 to switch modes. *(S/M on focused stem still TODO)*
@@ -324,22 +324,22 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [ ] **Ship-blocker:** resolve the Demucs model/runtime commercial-licensing review (`docs/RELEASE.md`).
 
 ### Stage C — Release engineering *(make a shippable installer)*
-- [ ] Set up GitHub Actions CI: matrix build (windows-latest at minimum), run `verify:rust` + `verify:frontend`, archive installer artifacts.
+- [x] Set up GitHub Actions CI (`.github/workflows/ci.yml`, windows-latest): runs `verify:frontend` + `verify:rust` on push/PR. *(installer-artifact archiving still TODO)*
 - [ ] **Ship-blocker:** provision an Authenticode certificate; sign the NSIS + MSI installers **and** the bundled `demucs.exe`.
-- [ ] Add `bundle.windows.nsis` / `bundle.windows.wix` config: publisher, copyright, longDescription, license page, per-user install mode, `webviewInstallMode: downloadBootstrapper`.
+- [x] Add bundle metadata: publisher, copyright, category, short/long description (tauri.conf.json). *(NSIS/WiX license page, per-user install mode, `webviewInstallMode` still TODO)*
 - [ ] Pin `bundle.targets` to `["nsis", "msi"]` for Windows; create separate macOS DMG and Linux AppImage lanes.
 - [ ] Add `tauri-plugin-updater`; sign updates with a published `pubkey`; host an update manifest.
-- [ ] Add a single `version-bump` script that updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` together.
+- [x] Add a single `version-bump` script (`scripts/version-bump.ps1`, `npm run version:bump`) that updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` together.
 - [x] Commit `package-lock.json` for reproducible npm resolution (and remove it from `.gitignore`).
 - [x] Fix `Cargo.toml` description to match current PRODUCT positioning (dropped "non-AI").
-- [ ] Maintain `CHANGELOG.md` (Keep-a-Changelog format).
+- [x] Maintain `CHANGELOG.md` (Keep-a-Changelog format).
 - [ ] Generate SBOM + third-party-attribution NOTICE during the build.
 
 ### Stage D — Quality
 - [ ] Add an end-to-end Rust test that invokes the real bundled Demucs sidecar against a short committed WAV fixture and asserts stem finite-ness + sample-rate + frame count (gated by `cfg(feature = "e2e")`).
 - [ ] Add tests for `analyze_track`, the audio_io decode path (WAV/MP3/FLAC), and `stems://progress` event emission.
 - [ ] Add Criterion benches under `src-tauri/benches/` for STFT throughput; track regressions.
-- [ ] Add a re-entrancy guard / single-job lock on `extract_stems`.
+- [x] Add a re-entrancy guard / single-job lock on `extract_stems` (`ExtractionState.running`).
 - [ ] Add a job id to `ProgressEvent`.
 - [ ] Add `tracing` with a rolling on-disk log under `$APPDATA/logs/`.
 - [ ] Multi-format export: 16-bit + 32-bit float WAV, FLAC, AIFF; add proper dither on float→i24.
@@ -348,9 +348,9 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 ### Stage E — Launch
 - [ ] **Ship-blocker:** add `LICENSE` (pick one — proprietary EULA or OSS).
-- [ ] **Ship-blocker:** write `PRIVACY.md` and document the network-call audit; add a hardened CSP to `tauri.conf.json`.
+- [x] Write `PRIVACY.md` and document the network-call audit (no runtime network calls; capabilities limited to core/dialog/opener). **CSP still `null`** — a hardened policy is recommended in `SECURITY.md` but must be smoke-tested in a real `tauri` run before applying (asset protocol powers audio audition).
 - [ ] Add `TERMS.md` / EULA.
-- [ ] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`.
+- [x] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`; `NOTICE.md` for third-party attribution.
 - [ ] Write end-user docs: first-run onboarding, supported-formats matrix, system requirements, FAQ, troubleshooting (especially the `RuntimeUnavailable` path), pricing/business-model.
 - [ ] Build a marketing site / store listing with real screenshots and feature copy.
 - [ ] Write a `NOTICE` / third-party-attribution doc covering Demucs, PyTorch, torchaudio, soundfile, Symphonia, RustFFT, hound, Tauri, React, lucide-react.
