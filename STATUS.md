@@ -15,7 +15,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 | Version | `0.1.0` (pinned in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`) |
 | Platform target | Windows (Tauri 2 NSIS + MSI); macOS/Linux targets configured but not exercised |
 | Stack | React 19 + TypeScript + Vite (frontend) · Tauri 2 + Rust (shell + commands) · Symphonia / RustFFT / hound (DSP) · PyInstaller-bundled Demucs sidecar (local ML) |
-| Verification | GREEN — 18 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 33 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design (a small export-format selector is the one intentional addition) |
+| Verification | GREEN — 19 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 34 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design (a small export-format selector is the one intentional addition) |
 | CI | GitHub Actions (`.github/workflows/ci.yml`) runs `verify:frontend` + `verify:rust` on push/PR (windows-latest) |
 
 ---
@@ -90,7 +90,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Demo dataset (waveform, fake report, fake export dir) hydrates **only** when `!hasTauriRuntime() && import.meta.env.PROD` — vitest and the real Tauri build start empty.
 
 **Partial / demo-only**
-- **Settings**, **Fullscreen**, and **Help** header buttons are tooltip-only stubs (`title='… not available in this build.'`).
+- **Settings** header button now opens a real panel (default export folder, open logs, reset). **Fullscreen** and **Help** remain tooltip-only stubs.
 - ~~**Spectrum** tab is a static CSS gradient~~ — now renders a real averaged magnitude spectrum from `analyze_track`.
 - ~~**Loudness** tab plots a subsampled copy of the waveform~~ — now renders a real short-term RMS curve from `analyze_track`.
 - Transport scrubber is now draggable/seekable; a partial timeline selection is honored on single-stem audition.
@@ -136,7 +136,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - ~~No cancellation~~ — **done**: a `CancelToken` (`src-tauri/src/cancel.rs`) is checked by the DSP path and registers the Demucs `Child` for kill; `cancel_extraction` command + UI Stop button.
 - **Whole-file in-memory processing** — `decode_audio` + `compute_stft` can spike to ~800 MB+ of spectra for a 5-minute stereo song. Tests only cover 0.5 s synthetic clips. OOM risk on 8 GB machines.
 - Single-threaded DSP (no rayon); STFT and N inverse passes are sequential per channel.
-- Export supports 16-bit, 24-bit, and 32-bit float WAV (via `write_wav_encoded`). Still no FLAC/AIFF/MP3/AAC and no dithering on truncation.
+- Export supports 16/24/32-float WAV and lossless FLAC, with TPDF dither on 16-bit. Still no AIFF/MP3/AAC.
 - No resampler, channel downmix, or mono→stereo expansion.
 - No re-entrancy guard on `extract_stems` — concurrent invocations will each allocate full buffers / each spawn Demucs.
 - `ProgressEvent` carries no job id.
@@ -289,7 +289,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - **CPU-only inference.** No CUDA/MPS in the shipped binary; `htdemucs_6s` on a long stereo song is slow.
 - ~~No cancellation~~ — **done**: a Stop button (and Esc) aborts a run and kills the Demucs child mid-run.
 - **Whole-file in-memory DSP.** Realistic 6–10 minute stereo tracks risk OOM on 8 GB machines; tests only cover 0.5 s synthetic clips.
-- **Export formats:** 16/24/32-float WAV supported; FLAC/AIFF still need encoder crates.
+- **Export formats:** 16/24/32-float WAV + lossless FLAC supported; AIFF still a follow-up.
 - **`htdemucs_6s` guitar / piano heads are experimental** — labeled in UI and `PRODUCT.md`.
 - **Privacy claim is not substantiated** by a published policy or documented network audit.
 - **Demucs model/runtime provenance** has an open commercial-licensing review — blocks paid distribution of the standalone installer.
@@ -304,7 +304,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [x] Add a global React `ErrorBoundary` around `<App />` with a "copy diagnostics" button. *(src/ErrorBoundary.tsx, wired in main.tsx)*
 - [x] Thread a cancel token through `commands.rs` → `separation.rs` / `ml_engine.rs`; the Demucs `Child` handle is registered so it can be killed mid-run (`src-tauri/src/cancel.rs`).
 - [x] Surface a Stop button in the UI (also Esc); wired to the `cancel_extraction` Tauri command.
-- [ ] Implement Settings panel: default output folder, ML device override, cleanup defaults, theme toggle.
+- [x] Implement Settings panel (header gear): default export folder, open logs folder, reset preferences. *(ML device override + theme toggle still TODO.)*
 - [x] Persist mode, cleanup defaults, volume, last folder (`localStorage`, desktop-only guard). *(window size still TODO)*
 - [x] Add keyboard shortcuts: Space/Esc for transport, Ctrl+O to open file, 1–4 to switch modes. *(S/M on focused stem still TODO)*
 - [x] Auto-dismissing success toasts + dismiss (×) button on every toast. *(persistent error log panel still TODO)*
@@ -343,7 +343,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [x] Add a re-entrancy guard / single-job lock on `extract_stems` (`ExtractionState.running`).
 - [x] Add a job id to `ProgressEvent` (monotonic per run).
 - [x] Add `tracing` with a rolling daily on-disk log under the OS app-log dir.
-- [x] Multi-format export: 16-bit + 32-bit float WAV (via `write_wav_encoded`). *(FLAC/AIFF need encoder crates; dither on truncation still TODO.)*
+- [x] Multi-format export: 16-bit + 32-bit float WAV + lossless FLAC (`write_wav_encoded` / `write_flac`), with TPDF dither on 16-bit. *(AIFF still a follow-up.)*
 - [ ] Add visual regression (Playwright + pixelmatch) replacing the dimension-only screenshot check.
 - [ ] WCAG 2.1 AA pass: keyboard reachability of timeline, focus rings on dark backgrounds, contrast on `--quiet` text.
 
