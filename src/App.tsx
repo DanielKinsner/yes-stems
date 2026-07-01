@@ -22,7 +22,6 @@ import {
   Clock,
   Cpu,
   Drum,
-  Eye,
   FileMusic,
   FolderInput,
   FolderOpen,
@@ -44,6 +43,7 @@ import {
   Volume2,
   VolumeX,
   Waves,
+  X,
 } from "lucide-react";
 import "./App.css";
 
@@ -150,11 +150,15 @@ const expectedStems: Record<StemMode, string[]> = {
 const experimentalNote =
   "Guitar and piano stems are experimental in 6-stem mode and may bleed into each other or Other depending on the mix.";
 
+// Shorter phrasing for the compact left-rack Options hint (the full note lives in the right-rack Notes panel).
+const experimentalHint =
+  "Guitar and piano are experimental in 6-stem mode and may bleed into each other or Other.";
+
 // Demo dataset — only seeded when running outside Tauri (browser preview used for
 // screenshots and design review). Real desktop builds always hydrate from the backend.
-const demoWaveform = Array.from({ length: 220 }, (_, i) => {
-  const env = 0.4 + 0.42 * Math.abs(Math.sin(i * 0.12) + 0.5 * Math.sin(i * 0.045 + 1.1));
-  const detail = 0.55 + 0.45 * Math.abs(Math.sin(i * 1.9) + 0.3 * Math.sin(i * 0.73));
+const demoWaveform = Array.from({ length: 440 }, (_, i) => {
+  const env = 0.46 + 0.4 * Math.abs(Math.sin(i * 0.06) + 0.5 * Math.sin(i * 0.022 + 1.1));
+  const detail = 0.6 + 0.4 * Math.abs(Math.sin(i * 0.95) + 0.3 * Math.sin(i * 0.37));
   return Math.min(1, env * detail);
 });
 
@@ -205,6 +209,43 @@ function buildDemoReport(): ExtractionReport {
   };
 }
 
+// Lightweight preference persistence. Only active in the real desktop build so that vitest
+// and the browser demo stay stateless (localStorage is never touched when Tauri is absent).
+const STORE_PREFIX = "yes-stems:";
+
+function loadPersisted<T>(key: string, fallback: T, parse: (raw: string) => T): T {
+  if (!hasTauriRuntime()) {
+    return fallback;
+  }
+  try {
+    const raw = window.localStorage.getItem(STORE_PREFIX + key);
+    return raw == null ? fallback : parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function savePersisted(key: string, value: string) {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(STORE_PREFIX + key, value);
+  } catch {
+    // storage disabled or over quota — preferences are best-effort
+  }
+}
+
+function isStemMode(value: string): value is StemMode {
+  return Object.prototype.hasOwnProperty.call(modeDetails, value);
+}
+
+function isAudioPath(path: string) {
+  return /\.(wav|flac|mp3|aif|aiff|m4a|ogg)$/i.test(path);
+}
+
+const modeOrder: StemMode[] = ["localMlSix", "localMlFour", "vocalInstrumental", "fullBand"];
+
 function App() {
   // Demo data is only seeded for the production browser preview (used for screenshots
   // and design review). The real Tauri desktop build hydrates from the backend, and the
@@ -212,11 +253,18 @@ function App() {
   const isDemo = !hasTauriRuntime() && import.meta.env.PROD;
 
   const [inputPath, setInputPath] = useState(() => (isDemo ? "Better Days.mp3" : ""));
-  const [mode, setMode] = useState<StemMode>("localMlSix");
+  const [mode, setMode] = useState<StemMode>(() =>
+    loadPersisted<StemMode>("mode", "localMlSix", (raw) => (isStemMode(raw) ? raw : "localMlSix")),
+  );
   const [aggressiveness, setAggressiveness] = useState(5);
   const [artifactReduction, setArtifactReduction] = useState(5);
-  const [cleanupEnabled, setCleanupEnabled] = useState(true);
-  const [cleanupStrength, setCleanupStrength] = useState(45);
+  const [cleanupEnabled, setCleanupEnabled] = useState(() =>
+    loadPersisted("cleanupEnabled", true, (raw) => raw !== "false"),
+  );
+  const [cleanupStrength, setCleanupStrength] = useState(() =>
+    loadPersisted("cleanupStrength", 45, (raw) => Math.max(0, Math.min(100, Number(raw) || 0))),
+  );
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const [analysis, setAnalysis] = useState<TrackAnalysis | null>(() =>
     isDemo ? buildDemoAnalysis() : null,
   );
@@ -239,12 +287,16 @@ function App() {
   const [playMode, setPlayMode] = useState<PlayMode>("sequence");
   const [soloStem, setSoloStem] = useState(() => (isDemo ? `${demoOutputDir}\\vocals.wav` : ""));
   const [mutedStems, setMutedStems] = useState<Set<string>>(new Set());
-  const [volume, setVolume] = useState(isDemo ? 0.8 : 0.85);
+  const [volume, setVolume] = useState(() =>
+    loadPersisted("volume", isDemo ? 0.8 : 0.85, (raw) => Math.max(0, Math.min(1, Number(raw) || 0))),
+  );
   const [playhead, setPlayhead] = useState(() => (isDemo ? { current: 42, total: 178.213 } : { current: 0, total: 0 }));
   const [timelineSelection, setTimelineSelection] = useState({ start: 0, end: isDemo ? 1 : 0 });
   const [exportError, setExportError] = useState("");
   const [exportMessage, setExportMessage] = useState("");
-  const [lastExportDir, setLastExportDir] = useState(() => (isDemo ? demoExportDir : ""));
+  const [lastExportDir, setLastExportDir] = useState(() =>
+    loadPersisted("lastExportDir", isDemo ? demoExportDir : "", (raw) => raw),
+  );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const allAudioRef = useRef<HTMLAudioElement[]>([]);
@@ -287,6 +339,104 @@ function App() {
       audio.volume = volume;
     }
   }, [volume]);
+
+  // Persist preferences (desktop only; no-ops in vitest / browser demo).
+  useEffect(() => savePersisted("mode", mode), [mode]);
+  useEffect(() => savePersisted("cleanupEnabled", String(cleanupEnabled)), [cleanupEnabled]);
+  useEffect(() => savePersisted("cleanupStrength", String(cleanupStrength)), [cleanupStrength]);
+  useEffect(() => savePersisted("volume", String(volume)), [volume]);
+  useEffect(() => {
+    if (lastExportDir) {
+      savePersisted("lastExportDir", lastExportDir);
+    }
+  }, [lastExportDir]);
+
+  // Auto-dismiss the export success toast after a few seconds.
+  useEffect(() => {
+    if (!exportMessage) {
+      return;
+    }
+    const timer = setTimeout(() => setExportMessage(""), 8000);
+    return () => clearTimeout(timer);
+  }, [exportMessage]);
+
+  // Keyboard shortcuts: Space (play/stop), Esc (stop), Ctrl/Cmd+O (open), 1–4 (switch mode).
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target != null &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if ((event.ctrlKey || event.metaKey) && (event.key === "o" || event.key === "O")) {
+        event.preventDefault();
+        void chooseInput();
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey || typing) {
+        return;
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlay();
+      } else if (event.key === "Escape") {
+        stopPlayback();
+      } else if (event.key >= "1" && event.key <= "4") {
+        const nextMode = modeOrder[Number(event.key) - 1];
+        if (nextMode) {
+          handleModeChange(nextMode);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report, mode, isExtracting, isPlaying, soloStem, playMode, mutedStems, inputPath]);
+
+  // Drag-and-drop an audio file anywhere on the window to load it (desktop only).
+  useEffect(() => {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const dispose = await getCurrentWebview().onDragDropEvent((event) => {
+          const payload = event.payload;
+          if (payload.type === "enter" || payload.type === "over") {
+            setIsDropTarget(true);
+          } else if (payload.type === "drop") {
+            setIsDropTarget(false);
+            if (!isExtracting) {
+              const path = payload.paths.find(isAudioPath) ?? payload.paths[0];
+              if (path) {
+                void analyzePath(path);
+              }
+            }
+          } else {
+            setIsDropTarget(false);
+          }
+        });
+        if (active) {
+          unlisten = dispose;
+        } else {
+          dispose();
+        }
+      } catch {
+        // drag-and-drop unavailable on this platform — non-fatal
+      }
+    })();
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExtracting]);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -374,6 +524,9 @@ function App() {
       ? experimentalNote
       : selectedMode.short;
 
+  // The left-rack Options hint uses a shorter phrasing than the right-rack Notes panel.
+  const hintText = mode === "localMlSix" ? experimentalHint : notesText;
+
   const etaText = (() => {
     if (isExtracting) {
       return `Processing — ${progress.detail} ${progressPercent}%`;
@@ -386,6 +539,25 @@ function App() {
   })();
 
   const footerPath = lastExportDir || report?.outputDir || "Chosen when you export";
+
+  async function analyzePath(selected: string) {
+    resetExtractionState();
+    setError("");
+    setExportError("");
+    setExportMessage("");
+    setInputPath(selected);
+    setProgress({ phase: "analyze", progress: 0.08, detail: "Reading source metadata" });
+    try {
+      const nextAnalysis = await invoke<TrackAnalysis>("analyze_track", { inputPath: selected });
+      setAnalysis(nextAnalysis);
+      setTimelineSelection({ start: 0, end: 1 });
+      setProgress({ phase: "ready", progress: 0, detail: "Source ready" });
+    } catch (caught) {
+      setAnalysis(null);
+      setProgress({ phase: "error", progress: 0, detail: "Analyze failed" });
+      setError(errorMessage(caught));
+    }
+  }
 
   async function chooseInput() {
     if (isExtracting || !hasTauriRuntime()) {
@@ -402,19 +574,7 @@ function App() {
     if (typeof selected !== "string") {
       return;
     }
-    resetExtractionState();
-    setInputPath(selected);
-    setProgress({ phase: "analyze", progress: 0.08, detail: "Reading source metadata" });
-    try {
-      const nextAnalysis = await invoke<TrackAnalysis>("analyze_track", { inputPath: selected });
-      setAnalysis(nextAnalysis);
-      setTimelineSelection({ start: 0, end: 1 });
-      setProgress({ phase: "ready", progress: 0, detail: "Source ready" });
-    } catch (caught) {
-      setAnalysis(null);
-      setProgress({ phase: "error", progress: 0, detail: "Analyze failed" });
-      setError(errorMessage(caught));
-    }
+    await analyzePath(selected);
   }
 
   function resetExtractionState() {
@@ -780,7 +940,7 @@ function App() {
               <span>Source</span>
               <span className="dot" aria-hidden="true" />
             </div>
-            <div className="source-card">
+            <div className={`source-card ${isDropTarget ? "drop" : ""}`}>
               <span className="art" aria-hidden="true">
                 <FileMusic size={20} />
               </span>
@@ -790,7 +950,6 @@ function App() {
               </div>
             </div>
             <button className="ghost-button" type="button" onClick={chooseInput} disabled={isExtracting}>
-              <FolderOpen size={15} />
               <span>Change File</span>
             </button>
           </section>
@@ -902,7 +1061,7 @@ function App() {
 
             <div className="hint-note">
               <Info size={15} />
-              <span>{notesText}</span>
+              <span>{hintText}</span>
             </div>
           </section>
 
@@ -966,7 +1125,7 @@ function App() {
                         key={index}
                         style={{
                           height: `${Math.max(6, Math.round(height * 100))}%`,
-                          opacity: analysis ? 0.55 + height * 0.4 : 0.16,
+                          opacity: analysis ? 0.74 + height * 0.26 : 0.16,
                         }}
                       />
                     ))}
@@ -981,10 +1140,14 @@ function App() {
                         }}
                         aria-hidden="true"
                       >
-                        <span className="sel-handle tl left" />
-                        <span className="sel-handle bl left" />
-                        <span className="sel-handle tl right" style={{ left: "100%" }} />
-                        <span className="sel-handle bl right" style={{ left: "100%" }} />
+                        <span className="sel-edge left">
+                          <span className="sel-handle tl" />
+                          <span className="sel-handle bl" />
+                        </span>
+                        <span className="sel-edge right">
+                          <span className="sel-handle tl" />
+                          <span className="sel-handle bl" />
+                        </span>
                       </div>
                     </>
                   ) : (
@@ -1092,7 +1255,6 @@ function App() {
                     </span>
                     <span className="stem-name">
                       <b>{stem.name}</b>
-                      {stem.experimental ? <span className="badge exp">EXP</span> : null}
                     </span>
                     <span className="stem-controls">
                       <button
@@ -1118,10 +1280,13 @@ function App() {
                     </span>
                     <span className="stem-wave" aria-hidden="true">
                       {stem.wave.map((height, index) => (
-                        <span key={index} style={{ height: `${Math.max(8, Math.round(height * 100))}%` }} />
+                        <span key={index} style={{ height: `${Math.max(5, Math.round(height * 100))}%` }} />
                       ))}
                     </span>
                     <span className="stem-db">{stem.dbLabel}</span>
+                    <span className="stem-exp" aria-hidden={!stem.experimental}>
+                      {stem.experimental ? <span className="badge exp">EXP</span> : null}
+                    </span>
                     <span className="meter" aria-hidden="true">
                       <span className="fill" style={{ width: `${stem.meter}%` }} />
                     </span>
@@ -1162,20 +1327,16 @@ function App() {
               </button>
             </div>
 
-            <div className="preview-info">
-              <div className="top">
-                <span className="name">Preview: {report ? previewLabel : "—"}</span>
-                <span className="time">
-                  {formatClock(playhead.current)} / {formatClock(playhead.total || analysis?.durationSeconds || 0)}
-                </span>
-              </div>
-              <div className="scrub">
-                <div
-                  className="done"
-                  style={{ width: `${scrubPercent(playhead)}%` }}
-                />
-                <div className="knob" style={{ left: `${scrubPercent(playhead)}%` }} />
-              </div>
+            <div className="preview-meta">
+              <span className="name">Preview: {report ? previewLabel : "—"}</span>
+              <span className="time">
+                {formatClock(playhead.current)} / {formatClock(playhead.total || analysis?.durationSeconds || 0)}
+              </span>
+            </div>
+
+            <div className="scrub">
+              <div className="done" style={{ width: `${scrubPercent(playhead)}%` }} />
+              <div className="knob" style={{ left: `${scrubPercent(playhead)}%` }} />
             </div>
 
             <div className="volume">
@@ -1226,7 +1387,6 @@ function App() {
                 disabled={!report}
                 onClick={() => revealOutput()}
               >
-                <Eye size={13} />
                 View Details
               </button>
             </div>
@@ -1268,10 +1428,16 @@ function App() {
               <span>Notes</span>
             </div>
             <p className="notes-text">{notesText}</p>
-            {auditionError ? <div className="toast err" role="alert">{auditionError}</div> : null}
-            {error ? <div className="toast err" role="alert">{error}</div> : null}
-            {exportMessage ? <div className="toast ok">{exportMessage}</div> : null}
-            {exportError ? <div className="toast err" role="alert">{exportError}</div> : null}
+            {auditionError ? (
+              <Toast kind="err" onClose={() => setAuditionError("")}>{auditionError}</Toast>
+            ) : null}
+            {error ? <Toast kind="err" onClose={() => setError("")}>{error}</Toast> : null}
+            {exportMessage ? (
+              <Toast kind="ok" onClose={() => setExportMessage("")}>{exportMessage}</Toast>
+            ) : null}
+            {exportError ? (
+              <Toast kind="err" onClose={() => setExportError("")}>{exportError}</Toast>
+            ) : null}
           </section>
 
           <section className="module pad export-module">
@@ -1342,6 +1508,25 @@ function App() {
         </div>
       </footer>
     </main>
+  );
+}
+
+function Toast({
+  kind,
+  onClose,
+  children,
+}: {
+  kind: "ok" | "err";
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`toast ${kind}`} role={kind === "err" ? "alert" : undefined}>
+      <span className="toast-msg">{children}</span>
+      <button type="button" className="toast-x" aria-label="Dismiss" onClick={onClose}>
+        <X size={13} />
+      </button>
+    </div>
   );
 }
 
@@ -1470,10 +1655,10 @@ function stemWave(seed: string): number[] {
   for (let i = 0; i < seed.length; i += 1) {
     hash = (hash * 31 + seed.charCodeAt(i)) % 100000;
   }
-  return Array.from({ length: 64 }, (_, i) => {
+  return Array.from({ length: 190 }, (_, i) => {
     const value = Math.abs(Math.sin((i + 1) * (0.3 + (hash % 17) / 40) + hash));
-    const env = 0.45 + 0.55 * Math.abs(Math.sin(i * 0.18 + (hash % 7)));
-    return Math.min(1, 0.2 + value * env);
+    const env = 0.4 + 0.6 * Math.abs(Math.sin(i * 0.07 + (hash % 7)));
+    return Math.min(1, 0.12 + value * env * 0.86);
   });
 }
 

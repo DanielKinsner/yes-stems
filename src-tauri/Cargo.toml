@@ -1,7 +1,7 @@
 [package]
 name = "yes-stems"
 version = "0.1.0"
-description = "Local non-AI music stem extraction desktop app."
+description = "Local, offline music stem separation — Demucs ML and Rust DSP, 100% on your machine."
 authors = ["YES Stems Contributors"]
 edition = "2024"
 

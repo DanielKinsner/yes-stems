@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const tauriMocks = vi.hoisted(() => ({
   convertFileSrc: vi.fn(),
@@ -148,6 +149,7 @@ describe("YES Stems app", () => {
     tauriMocks.listen.mockResolvedValue(() => undefined);
     vi.unstubAllGlobals();
     delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    window.localStorage.clear();
   });
 
   it("renders the extraction workspace without scaffold copy", () => {
@@ -403,5 +405,62 @@ describe("YES Stems app", () => {
         stems: sixStemReport.stems,
       },
     });
+  });
+
+  it("switches mode with the number-key shortcut", () => {
+    render(<App />);
+
+    expect(screen.getByRole("tab", { name: /Local ML 6 Stems/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.keyDown(document.body, { key: "2" });
+
+    expect(screen.getByRole("tab", { name: /Local ML 4 Stems/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("dismisses the export toast with its close button", async () => {
+    withTauri();
+    tauriMocks.open.mockResolvedValueOnce("C:\\music\\song.wav").mockResolvedValueOnce("D:\\exports");
+    setupInvoke({ analysis: analysisFor("song"), report: sixStemReport });
+
+    render(<App />);
+
+    await selectSourceAndArm();
+    fireEvent.click(screen.getByRole("button", { name: /Run Extraction/i }));
+    await screen.findByText("98.2 MB");
+
+    fireEvent.click(screen.getByRole("button", { name: /Export All Stems/i }));
+    await screen.findByText(/Exported 2 files/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /Dismiss/i }));
+    expect(screen.queryByText(/Exported 2 files/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ErrorBoundary", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("catches render errors and offers diagnostics", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    function Boom(): never {
+      throw new Error("kaboom");
+    }
+
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+
+    expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Copy diagnostics/i })).toBeInTheDocument();
+    spy.mockRestore();
   });
 });
