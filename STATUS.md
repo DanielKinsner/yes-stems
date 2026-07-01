@@ -15,7 +15,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 | Version | `0.1.0` (pinned in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`) |
 | Platform target | Windows (Tauri 2 NSIS + MSI); macOS/Linux targets configured but not exercised |
 | Stack | React 19 + TypeScript + Vite (frontend) · Tauri 2 + Rust (shell + commands) · Symphonia / RustFFT / hound (DSP) · PyInstaller-bundled Demucs sidecar (local ML) |
-| Verification | GREEN — 12 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 24 Rust unit tests pass; UI screenshot is exactly 1440×820 (matches the reference aspect ratio) |
+| Verification | GREEN — 15 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 24 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design 1:1 |
 | CI | None (no `.github/workflows/`) — verification is local-only via `npm run verify:*` |
 
 ---
@@ -98,15 +98,15 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - **Volume** is a single global slider applied to every `<audio>` — no per-stem gain or pan.
 - Transport **scrubber knob** is read-only — no pointer/seek handler.
 - Timeline drag-selection is captured and rendered but never wired to "play selection" or "export selection".
-- Toasts in the notes module have **no dismiss button or auto-clear**.
+- Toasts now have a dismiss (×) button; the export-success toast also auto-clears after 8s. Errors persist until dismissed or superseded (no separate error-log panel yet).
 
 **Gaps**
-- No global React `ErrorBoundary` — a render crash white-screens the app.
-- No keyboard shortcuts (Space/Esc/S/M/Ctrl+O/number-keys-for-modes).
+- ~~No global React `ErrorBoundary`~~ — **done**: `src/ErrorBoundary.tsx` catches render crashes and offers "copy diagnostics".
+- ~~No keyboard shortcuts~~ — **partly done**: Space/Esc (transport), Ctrl+O (open), 1–4 (modes). S/M-on-focused-stem still TODO.
 - No responsive layout below ~1180px; `body { min-width: 1120px; overflow: hidden }` clips chrome on small laptops.
 - No light theme or `prefers-color-scheme` handling.
-- No persistence (last folder, mode, volume, window size) — every session starts cold.
-- No drag-and-drop onto the source card.
+- ~~No persistence~~ — **partly done**: mode, cleanup enable/strength, volume, and last export dir persist via `localStorage` (desktop-only). Window size still TODO.
+- ~~No drag-and-drop onto the source card~~ — **done**: window-level Tauri `onDragDropEvent` loads a dropped audio file (desktop-only).
 - No multi-file/batch queue.
 - No way to cancel a running extraction from the UI (no Stop button, no progress phase stepper).
 - No localisation — every string is hardcoded English.
@@ -206,7 +206,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 **Works**
 - 12 Vitest cases in `src/App.test.tsx` covering: default render, six-stem expectations, Classic DSP layer file list, full `extract_stems` request body, source replacement clearing stale report, classic tuning + cleanup-strength passthrough, pointer-drag timeline math, stem audition via `convertFileSrc`, transport Play, export round-trip incl. `openPath`.
 - 24 Rust unit tests across `stem_cleanup`, `separation`, `ml_engine`, `audio_io`, `commands` — including STFT roundtrip RMS < 0.005, mask differentiation under tuning, bundled runner sets `TORCH_HOME`, PYTHONUTF8 enforcement, non-ASCII source workspace, stem shape mismatch validation, export sanitized folder, working-root isolation.
-- `scripts/capture-ui-screenshot.ps1` regenerates `docs/screenshots/yes-stems-installed-app.png` via headless Chrome/Edge; `scripts/verify-ui-screenshot.ps1` asserts exact 1440×820.
+- `scripts/capture-ui-screenshot.ps1` regenerates `docs/screenshots/yes-stems-installed-app.png` via headless Chrome/Edge; `scripts/verify-ui-screenshot.ps1` asserts exact 1920×1080.
 - `scripts/assert-main-branch.ps1` blocks release flows from non-main branches.
 
 **Partial / demo-only**
@@ -214,7 +214,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Rust DSP tests use only a synthetic_audio() buffer (440 Hz + 110 Hz sines + clicks, 0.5 s @ 44.1 kHz).
 - `ml_engine` tests cover the *plan* (filenames, env vars, workspace sanitization) but never invoke real Demucs; `bundled_runner_sets_torch_home` writes an empty placeholder `demucs.exe`.
 - `smoke-installed-demucs.ps1` only asserts that the expected stem filenames exist — not stem quality, separation accuracy, or file sizes.
-- Screenshot verification checks **dimensions only** — a blank/corrupted 1440×820 would pass.
+- Screenshot verification checks **dimensions only** — a blank/corrupted 1920×1080 would pass.
 - No code-coverage tooling (nyc/c8/tarpaulin/llvm-cov).
 
 **Gaps**
@@ -269,7 +269,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 | `npm run verify:frontend` | `npm test && vite build` | PASS |
 | `npm run verify:rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (24 cases) | PASS |
 | `npm run verify:fast` | frontend + rust lanes | PASS |
-| `npm run verify:screenshot` | asserts `docs/screenshots/yes-stems-installed-app.png` is 1440×820 | PASS |
+| `npm run verify:screenshot` | asserts `docs/screenshots/yes-stems-installed-app.png` is 1920×1080 | PASS |
 | `npm run verify:ui` | branch + frontend + screenshot | PASS |
 | `npm run verify:release` | branch + fast + screenshot | PASS |
 | `npm run build:windows` | Tauri NSIS + MSI build (no bundled sidecar) | Manual, last known: PASS |
@@ -300,17 +300,17 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 ## 7. Roadmap to a shipped product
 
 ### Stage A — Product hardening *(close the UX cliff for v0.2)*
-- [ ] Add a global React `ErrorBoundary` around `<App />` with a "copy diagnostics" button.
+- [x] Add a global React `ErrorBoundary` around `<App />` with a "copy diagnostics" button. *(src/ErrorBoundary.tsx, wired in main.tsx)*
 - [ ] Thread a cancel token through `commands.rs` → `separation.rs` / `ml_engine.rs`; keep the Demucs `Child` handle so it can be killed.
 - [ ] Surface a Stop button in the UI; wire to `cancel_extraction` Tauri command.
 - [ ] Implement Settings panel: default output folder, ML device override, cleanup defaults, theme toggle.
-- [ ] Persist mode, cleanup defaults, volume, last folder, window size (Tauri store or `localStorage`).
-- [ ] Add keyboard shortcuts: Space/Esc for transport, S/M on focused stem, Ctrl+O to open file, 1–4 to switch modes.
-- [ ] Auto-dismissing toasts + dismiss button + persistent error log panel.
+- [x] Persist mode, cleanup defaults, volume, last folder (`localStorage`, desktop-only guard). *(window size still TODO)*
+- [x] Add keyboard shortcuts: Space/Esc for transport, Ctrl+O to open file, 1–4 to switch modes. *(S/M on focused stem still TODO)*
+- [x] Auto-dismissing success toasts + dismiss (×) button on every toast. *(persistent error log panel still TODO)*
 - [ ] Inline runtime-missing panel with one-click installer guidance (not just a tooltip).
 - [ ] Make scrubber knob draggable; honor timeline selection for "play selection".
 - [ ] Hide or implement Spectrum + Loudness tabs (don't ship placeholder visuals labeled as features).
-- [ ] Drag-and-drop onto source card.
+- [x] Drag-and-drop an audio file onto the window/source card (Tauri `onDragDropEvent`, desktop-only).
 - [ ] **Ship-blocker:** chunked / overlap-add streaming in `separation.rs` to bound RAM (or at minimum a length cap with a clear UI error).
 
 ### Stage B — Local ML packaging *(make "it just works offline" true)*
@@ -331,7 +331,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [ ] Add `tauri-plugin-updater`; sign updates with a published `pubkey`; host an update manifest.
 - [ ] Add a single `version-bump` script that updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` together.
 - [x] Commit `package-lock.json` for reproducible npm resolution (and remove it from `.gitignore`).
-- [ ] Fix `Cargo.toml` description to match current PRODUCT positioning (drop "non-AI").
+- [x] Fix `Cargo.toml` description to match current PRODUCT positioning (dropped "non-AI").
 - [ ] Maintain `CHANGELOG.md` (Keep-a-Changelog format).
 - [ ] Generate SBOM + third-party-attribution NOTICE during the build.
 
