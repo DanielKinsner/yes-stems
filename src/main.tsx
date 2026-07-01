@@ -11,12 +11,18 @@ const DESIGN_HEIGHT = 820;
 
 function applyFillScale() {
   const root = document.documentElement.style;
-  root.setProperty("--sx", String(window.innerWidth / DESIGN_WIDTH));
-  root.setProperty("--sy", String(window.innerHeight / DESIGN_HEIGHT));
+  // Fall back to the design size (scale 1) if the window reports a 0 dimension, so the app is
+  // never scaled to nothing (some hosts report innerWidth/innerHeight of 0 before first layout).
+  const width = window.innerWidth || DESIGN_WIDTH;
+  const height = window.innerHeight || DESIGN_HEIGHT;
+  root.setProperty("--sx", String(width / DESIGN_WIDTH));
+  root.setProperty("--sy", String(height / DESIGN_HEIGHT));
 }
 
 applyFillScale();
 window.addEventListener("resize", applyFillScale);
+// Re-measure after the first paint in case the window reported a 0 size at startup.
+requestAnimationFrame(applyFillScale);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
