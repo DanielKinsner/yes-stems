@@ -836,12 +836,20 @@ p {
 }
 
 /* Spectrum / loudness / metrics views */
-.spectrum {
+.spectrum-bars {
   position: absolute;
-  inset: 0;
-  background:
-    repeating-linear-gradient(0deg, rgba(226, 239, 255, 0.05) 0 1px, transparent 1px 26px),
-    linear-gradient(180deg, transparent 0 42%, rgba(17, 165, 148, 0.16) 62%, rgba(47, 224, 207, 0.24) 100%);
+  inset: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.spectrum-bars span {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, var(--vocals) 0%, var(--accent-2) 45%, var(--accent-deep) 100%);
+  opacity: 0.92;
 }
 
 .metrics-grid {

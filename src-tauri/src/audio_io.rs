@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use rustfft::{FftPlanner, num_complex::Complex};
 use symphonia::core::{
     codecs::{
         CodecParameters,
@@ -92,7 +93,118 @@ pub fn analyze_track(path: &Path) -> Result<TrackAnalysis, AudioIoError> {
         duration_seconds: audio.duration_seconds(),
         peak: audio.peak(),
         waveform_peaks: waveform_peaks(&audio, 96),
+        spectrum: average_spectrum(&audio, 64),
+        loudness: short_term_loudness(&audio, 96),
     })
+}
+
+/// Short-term loudness curve: per-bucket RMS across all channels, normalized 0..1 by the
+/// loudest bucket. A real level-over-time trace (not a copy of the waveform envelope).
+fn short_term_loudness(audio: &AudioBuffer, buckets: usize) -> Vec<f32> {
+    if buckets == 0 || audio.frames() == 0 {
+        return Vec::new();
+    }
+
+    let frames = audio.frames();
+    let mut values = Vec::with_capacity(buckets);
+    for bucket_index in 0..buckets {
+        let start = bucket_index * frames / buckets;
+        let end = ((bucket_index + 1) * frames / buckets)
+            .max(start + 1)
+            .min(frames);
+        let mut sum_sq = 0.0_f64;
+        let mut count = 0_u64;
+        for channel in &audio.samples {
+            for &sample in &channel[start..end] {
+                sum_sq += f64::from(sample) * f64::from(sample);
+                count += 1;
+            }
+        }
+        let rms = if count > 0 {
+            (sum_sq / count as f64).sqrt() as f32
+        } else {
+            0.0
+        };
+        values.push(rms);
+    }
+
+    let max = values.iter().copied().fold(0.0_f32, f32::max).max(1.0e-6);
+    for value in &mut values {
+        *value = (*value / max).clamp(0.0, 1.0);
+    }
+    values
+}
+
+/// Average magnitude spectrum: Hann-windowed FFTs sampled across the whole track, averaged
+/// per bin, downsampled to `bins`, and sqrt-compressed + normalized to 0..1 for display.
+fn average_spectrum(audio: &AudioBuffer, bins: usize) -> Vec<f32> {
+    const FFT_SIZE: usize = 2048;
+    let frames = audio.frames();
+    if bins == 0 || frames < FFT_SIZE || audio.channels == 0 {
+        return vec![0.0; bins];
+    }
+
+    let half = FFT_SIZE / 2 + 1;
+    let window = hann_window(FFT_SIZE);
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(FFT_SIZE);
+
+    // Spread ~128 windows evenly across the track (capped) so long files stay cheap.
+    let step = (frames.saturating_sub(FFT_SIZE) / 128).max(1);
+    let inv_channels = 1.0 / audio.channels as f32;
+    let mut accum = vec![0.0_f64; half];
+    let mut window_count = 0_u64;
+    let mut offset = 0;
+    while offset + FFT_SIZE <= frames && window_count < 256 {
+        let mut buffer = vec![Complex::<f32>::default(); FFT_SIZE];
+        for (index, slot) in buffer.iter_mut().enumerate() {
+            let mut mono = 0.0_f32;
+            for channel in &audio.samples {
+                mono += channel[offset + index];
+            }
+            *slot = Complex::new(mono * inv_channels * window[index], 0.0);
+        }
+        fft.process(&mut buffer);
+        for (bin, value) in accum.iter_mut().enumerate() {
+            *value += f64::from(buffer[bin].norm());
+        }
+        window_count += 1;
+        offset += step;
+    }
+
+    if window_count == 0 {
+        return vec![0.0; bins];
+    }
+    for value in &mut accum {
+        *value /= window_count as f64;
+    }
+
+    let mut out = vec![0.0_f32; bins];
+    for (bin_index, slot) in out.iter_mut().enumerate() {
+        let start = bin_index * half / bins;
+        let end = ((bin_index + 1) * half / bins).max(start + 1).min(half);
+        let mut sum = 0.0_f64;
+        for value in &accum[start..end] {
+            sum += *value;
+        }
+        *slot = (sum / (end - start) as f64) as f32;
+    }
+
+    let max = out.iter().copied().fold(0.0_f32, f32::max).max(1.0e-6);
+    for value in &mut out {
+        // sqrt compression keeps quieter high-frequency content visible.
+        *value = (*value / max).clamp(0.0, 1.0).sqrt();
+    }
+    out
+}
+
+fn hann_window(size: usize) -> Vec<f32> {
+    (0..size)
+        .map(|index| {
+            let phase = 2.0 * std::f32::consts::PI * index as f32 / size as f32;
+            0.5 - 0.5 * phase.cos()
+        })
+        .collect()
 }
 
 pub fn decode_audio(path: &Path) -> Result<AudioBuffer, AudioIoError> {
@@ -358,7 +470,7 @@ mod tests {
     fn analyze_track_reports_shape_and_waveform_peaks() {
         let temp = tempfile::tempdir().expect("temp dir");
         let path = temp.path().join("song.wav");
-        let mono: Vec<f32> = (0..2000).map(|i| (i as f32 * 0.05).sin() * 0.9).collect();
+        let mono: Vec<f32> = (0..5000).map(|i| (i as f32 * 0.05).sin() * 0.9).collect();
         write_wav(&path, 44_100, &[mono]).expect("write wav");
 
         let analysis = analyze_track(&path).expect("analyze");
@@ -366,9 +478,28 @@ mod tests {
         assert_eq!(analysis.file_name, "song");
         assert_eq!(analysis.sample_rate, 44_100);
         assert_eq!(analysis.channels, 1);
-        assert_eq!(analysis.frames, 2000);
-        assert!((analysis.duration_seconds - 2000.0 / 44_100.0).abs() < 1.0e-6);
+        assert_eq!(analysis.frames, 5000);
+        assert!((analysis.duration_seconds - 5000.0 / 44_100.0).abs() < 1.0e-6);
         assert_eq!(analysis.waveform_peaks.len(), 96);
         assert!(analysis.peak > 0.8 && analysis.peak <= 1.0);
+    }
+
+    #[test]
+    fn analyze_track_reports_real_spectrum_and_loudness() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("tone.wav");
+        // A steady tone should produce a spectrum with clear energy and a bounded loudness curve.
+        let mono: Vec<f32> = (0..8000).map(|i| (i as f32 * 0.2).sin() * 0.7).collect();
+        write_wav(&path, 44_100, &[mono]).expect("write wav");
+
+        let analysis = analyze_track(&path).expect("analyze");
+
+        assert_eq!(analysis.spectrum.len(), 64);
+        assert_eq!(analysis.loudness.len(), 96);
+        assert!(analysis.spectrum.iter().all(|v| (0.0..=1.0).contains(v)));
+        assert!(analysis.loudness.iter().all(|v| (0.0..=1.0).contains(v)));
+        // A real (non-silent) tone yields some non-zero spectral energy.
+        assert!(analysis.spectrum.iter().any(|&v| v > 0.05));
+        assert!(analysis.loudness.iter().any(|&v| v > 0.1));
     }
 }

@@ -59,6 +59,8 @@ type TrackAnalysis = {
   durationSeconds: number;
   peak: number;
   waveformPeaks: number[];
+  spectrum?: number[];
+  loudness?: number[];
 };
 
 type LocalMlStatus = {
@@ -163,6 +165,17 @@ const demoWaveform = Array.from({ length: 440 }, (_, i) => {
   return Math.min(1, env * detail);
 });
 
+const demoSpectrum = Array.from({ length: 64 }, (_, i) => {
+  const t = i / 64;
+  const shape = Math.pow(1 - t, 1.3) * (0.7 + 0.3 * Math.abs(Math.sin(i * 0.7)));
+  return Math.min(1, 0.14 + shape);
+});
+
+const demoLoudness = Array.from({ length: 96 }, (_, i) => {
+  const env = 0.5 + 0.4 * Math.abs(Math.sin(i * 0.09) + 0.4 * Math.sin(i * 0.31));
+  return Math.min(1, env);
+});
+
 const demoStemSeed: Array<{ file: string; name: string; role: string; db: number; mb: number }> = [
   { file: "vocals.wav", name: "Vocals", role: "Lead and backing vocal content", db: -6.2, mb: 98.3 },
   { file: "drums.wav", name: "Drums", role: "Percussion and transient material", db: -8.4, mb: 91.7 },
@@ -184,6 +197,8 @@ function buildDemoAnalysis(): TrackAnalysis {
     durationSeconds: 178.213,
     peak: 0.94,
     waveformPeaks: demoWaveform,
+    spectrum: demoSpectrum,
+    loudness: demoLoudness,
   };
 }
 
@@ -1286,14 +1301,28 @@ function App() {
                 </div>
               ) : null}
 
-              {activeTab === "spectrum" ? <div className="spectrum" aria-hidden="true" /> : null}
+              {activeTab === "spectrum" ? (
+                analysis?.spectrum?.length ? (
+                  <div className="spectrum-bars" aria-hidden="true">
+                    {analysis.spectrum.map((height, index) => (
+                      <span key={index} style={{ height: `${Math.max(2, Math.round(height * 100))}%` }} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overview-empty">Select a track to render its spectrum.</div>
+                )
+              ) : null}
 
               {activeTab === "loudness" ? (
-                <div className="loudness" aria-hidden="true">
-                  {subsample(waveformLevels, 56).map((height, index) => (
-                    <span key={index} style={{ height: `${Math.max(4, Math.round(height * 100))}%` }} />
-                  ))}
-                </div>
+                (analysis?.loudness?.length ?? 0) > 0 ? (
+                  <div className="loudness" aria-hidden="true">
+                    {analysis!.loudness!.map((height, index) => (
+                      <span key={index} style={{ height: `${Math.max(3, Math.round(height * 100))}%` }} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overview-empty">Select a track to render its loudness curve.</div>
+                )
               ) : null}
 
               {activeTab === "metrics" ? (
@@ -1830,14 +1859,6 @@ function metricsCells(analysis: TrackAnalysis | null, report: ExtractionReport |
           : "n/a",
     },
   ];
-}
-
-function subsample(values: number[], count: number): number[] {
-  if (values.length <= count) {
-    return values;
-  }
-  const step = values.length / count;
-  return Array.from({ length: count }, (_, i) => values[Math.floor(i * step)]);
 }
 
 function stemNameFromPath(path: string, rows: StemRow[]): string {

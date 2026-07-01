@@ -104,6 +104,10 @@ pub struct TrackAnalysis {
     pub duration_seconds: f64,
     pub peak: f32,
     pub waveform_peaks: Vec<f32>,
+    /// Average magnitude spectrum (0..1) for the Spectrum tab.
+    pub spectrum: Vec<f32>,
+    /// Short-term RMS loudness curve (0..1) for the Loudness tab.
+    pub loudness: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
