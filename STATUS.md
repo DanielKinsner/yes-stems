@@ -247,7 +247,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - `RELEASE.md` is Windows-only despite `bundle.targets = "all"`.
 
 **Gaps**
-- **No LICENSE file** — project is effectively all-rights-reserved by default.
+- ~~No LICENSE file~~ — **done**: proprietary/commercial `LICENSE` + `EULA.md` (needs a lawyer's review before sale).
 - **No PRIVACY policy** substantiating the strong local-only claims the UI makes.
 - No TERMS/EULA.
 - No customer-facing website/store-listing copy, no marketing assets beyond the engineering screenshot.
@@ -293,7 +293,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - **`htdemucs_6s` guitar / piano heads are experimental** — labeled in UI and `PRODUCT.md`.
 - **Privacy claim is not substantiated** by a published policy or documented network audit.
 - **Demucs model/runtime provenance** has an open commercial-licensing review — blocks paid distribution of the standalone installer.
-- **No LICENSE file** — currently no legal basis for redistribution.
+- **Licensed proprietary/commercial** (`LICENSE` + `EULA.md`); the EULA is a template pending legal review.
 - ~~**Spectrum / Loudness tabs are placeholder visuals**~~ — now backed by real DSP (averaged spectrum + short-term RMS).
 
 ---
@@ -348,9 +348,9 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [ ] WCAG 2.1 AA pass: keyboard reachability of timeline, focus rings on dark backgrounds, contrast on `--quiet` text.
 
 ### Stage E — Launch
-- [ ] **Ship-blocker:** add `LICENSE` (pick one — proprietary EULA or OSS).
+- [x] **Ship-blocker:** add `LICENSE` — **proprietary/commercial** (© Daniel Kinsner, all rights reserved).
 - [x] Write `PRIVACY.md` and document the network-call audit (no runtime network calls; capabilities limited to core/dialog/opener). A **hardened CSP is now set** in `tauri.conf.json` (asset protocol + IPC only) — **needs a `tauri dev` audio smoke-test** before release (see `SECURITY.md`).
-- [ ] Add `TERMS.md` / EULA.
+- [x] Add a commercial `EULA.md` (template — needs a lawyer's review before sale).
 - [x] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`; `NOTICE.md` for third-party attribution.
 - [ ] Write end-user docs: first-run onboarding, supported-formats matrix, system requirements, FAQ, troubleshooting (especially the `RuntimeUnavailable` path), pricing/business-model.
 - [ ] Build a marketing site / store listing with real screenshots and feature copy.

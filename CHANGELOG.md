@@ -28,6 +28,8 @@ All notable changes to YES Stems are documented in this file. The format is base
 - Export **format** choice: 16-bit / 24-bit / 32-bit-float WAV, and lossless **FLAC**; 16-bit
   export uses TPDF dither.
 - Hardened Content-Security-Policy (asset protocol + IPC only) in `tauri.conf.json`.
+- Proprietary/commercial `LICENSE` and a `EULA.md` end-user agreement (template pending legal
+  review); `Cargo.toml`/`package.json` marked proprietary and non-publishable.
 - Bundle metadata (publisher, copyright, category, descriptions); GitHub Actions CI running the
   frontend + Rust verify lanes; a `version-bump` script; PRIVACY (with a network-call audit),
   NOTICE, CONTRIBUTING, SECURITY, and CODE_OF_CONDUCT docs.

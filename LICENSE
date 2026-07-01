@@ -1,0 +1,24 @@
+YES Stems — Proprietary Software License
+Copyright (c) 2026 Daniel Kinsner. All rights reserved.
+
+This software, including its source code, assets, and documentation (the "Software"),
+is the confidential and proprietary property of Daniel Kinsner ("Licensor").
+
+No license or right is granted to any person to use, copy, modify, merge, publish,
+distribute, sublicense, sell, reverse-engineer, decompile, or create derivative works
+of the Software, in whole or in part, except under a separate written agreement with
+the Licensor.
+
+Use of the compiled, distributed application is governed solely by the End-User License
+Agreement in EULA.md. The Software is sold by license, not sold outright, and title
+remains with the Licensor at all times.
+
+Third-party open-source components are included under their own licenses; see NOTICE.md.
+Nothing in this file limits the rights granted by those third-party licenses to their
+respective components.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.

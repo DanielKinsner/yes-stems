@@ -3,6 +3,11 @@
 Thanks for your interest! YES Stems is a local-first desktop app (React + TypeScript frontend,
 Tauri 2 + Rust backend, optional bundled Demucs sidecar for local ML).
 
+> **Note:** YES Stems is **proprietary, commercial software** (see `LICENSE`). The source is not
+> open, and this guide is primarily for the maintainer and any authorized collaborators. External
+> contributions can only be accepted under a signed contributor agreement assigning rights to the
+> Licensor — please reach out before submitting a change.
+
 ## Prerequisites
 
 - **Node.js 20+** and npm

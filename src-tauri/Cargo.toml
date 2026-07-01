@@ -2,8 +2,10 @@
 name = "yes-stems"
 version = "0.1.0"
 description = "Local, offline music stem separation — Demucs ML and Rust DSP, 100% on your machine."
-authors = ["YES Stems Contributors"]
+authors = ["Daniel Kinsner"]
 edition = "2024"
+license = "LicenseRef-Proprietary"
+publish = false
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary

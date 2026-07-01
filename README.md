@@ -86,3 +86,10 @@ Read the active project docs first:
 - `docs/ARCHITECTURE.md`
 - `docs/TESTING.md`
 - `docs/RELEASE.md`
+
+## License
+
+YES Stems is **proprietary, commercial software** — © 2026 Daniel Kinsner, all rights reserved.
+The source is not open source. See [`LICENSE`](LICENSE) for the source terms, [`EULA.md`](EULA.md)
+for the end-user license that governs the distributed app, and [`NOTICE.md`](NOTICE.md) for the
+third-party open-source components it bundles.
