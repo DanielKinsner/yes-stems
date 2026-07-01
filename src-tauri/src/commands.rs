@@ -11,7 +11,9 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
-    audio_io, ml_engine, separation,
+    audio_io,
+    cancel::CancelToken,
+    ml_engine, separation,
     types::{
         ExportStemsRequest, ExportStemsResult, ExtractRequest, ExtractionReport, LocalMlStatus,
         ProgressEvent, TrackAnalysis,
@@ -19,10 +21,12 @@ use crate::{
 };
 
 /// Shared extraction state. The `running` flag guards against concurrent `extract_stems`
-/// invocations so two runs cannot each allocate full-song spectra or spawn Demucs at once.
+/// invocations so two runs cannot each allocate full-song spectra or spawn Demucs at once;
+/// `cancel` lets the UI abort the in-flight run.
 #[derive(Default)]
 pub struct ExtractionState {
     running: Arc<AtomicBool>,
+    cancel: CancelToken,
 }
 
 /// RAII guard that clears the `running` flag when an extraction finishes — including on
@@ -71,6 +75,8 @@ pub async fn extract_stems(
     }
     let _guard = RunningGuard(running);
 
+    state.cancel.reset();
+    let cancel = state.cancel.clone();
     let resource_dir = app.path().resource_dir().ok();
     let managed_output_root = managed_working_root(app.path().app_data_dir().ok().as_deref());
     tauri::async_runtime::spawn_blocking(move || {
@@ -98,6 +104,7 @@ pub async fn extract_stems(
                 mode,
                 resource_dir,
                 cleanup,
+                &cancel,
                 emit_progress,
             )
             .map_err(|error| error.to_string())
@@ -108,6 +115,7 @@ pub async fn extract_stems(
                 mode,
                 tuning,
                 cleanup,
+                &cancel,
                 emit_progress,
             )
             .map_err(|error| error.to_string())
@@ -115,6 +123,12 @@ pub async fn extract_stems(
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// Abort the in-flight extraction (kills the Demucs child if one is running).
+#[tauri::command]
+pub fn cancel_extraction(state: tauri::State<'_, ExtractionState>) {
+    state.cancel.cancel();
 }
 
 fn managed_working_root(app_data_dir: Option<&Path>) -> PathBuf {

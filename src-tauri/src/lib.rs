@@ -1,4 +1,5 @@
 mod audio_io;
+mod cancel;
 mod commands;
 mod ml_engine;
 mod separation;
@@ -17,6 +18,7 @@ pub fn run() {
             commands::analyze_track,
             commands::check_local_ml_runtime,
             commands::extract_stems,
+            commands::cancel_extraction,
             commands::export_stems
         ])
         .run(tauri::generate_context!())

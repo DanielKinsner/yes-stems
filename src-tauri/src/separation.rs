@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioBuffer, AudioIoError},
+    cancel::CancelToken,
     stem_cleanup,
     types::{ExtractionReport, SeparationTuning, StemCleanupOptions, StemFile, StemMode},
 };
@@ -20,6 +21,8 @@ pub enum SeparationError {
     Audio(#[from] AudioIoError),
     #[error("could not create output directory: {0}")]
     OutputDirectory(std::io::Error),
+    #[error("extraction was cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug)]
@@ -45,6 +48,7 @@ pub fn extract_to_directory<F>(
     mode: StemMode,
     tuning: SeparationTuning,
     cleanup: StemCleanupOptions,
+    cancel: &CancelToken,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -54,6 +58,7 @@ where
     audio.ensure_valid()?;
     std::fs::create_dir_all(output_dir).map_err(SeparationError::OutputDirectory)?;
 
+    bail_if_cancelled(cancel)?;
     progress(
         "analysis",
         0.12,
@@ -61,6 +66,7 @@ where
     );
     let stft = compute_stft(audio);
 
+    bail_if_cancelled(cancel)?;
     progress(
         "analysis",
         0.30,
@@ -70,6 +76,7 @@ where
     let cleanup = cleanup.clamped();
     let mask_set = build_masks(&stft, audio.sample_rate, tuning);
 
+    bail_if_cancelled(cancel)?;
     progress(
         "render",
         0.48,
@@ -77,6 +84,7 @@ where
     );
     let mut stems = render_stems(&stft, mode, &mask_set);
 
+    bail_if_cancelled(cancel)?;
     progress(
         "verify",
         0.70,
@@ -84,6 +92,7 @@ where
     );
     let reconstruction_error = reconstruction_error(audio, mode, &stems);
 
+    bail_if_cancelled(cancel)?;
     progress("export", 0.76, "writing 24-bit wav stems".to_string());
     let mut stem_files = Vec::with_capacity(stems.len());
     for stem in &mut stems {
@@ -124,6 +133,7 @@ pub fn extract_track_to_directory<F>(
     mode: StemMode,
     tuning: SeparationTuning,
     cleanup: StemCleanupOptions,
+    cancel: &CancelToken,
     mut progress: F,
 ) -> Result<ExtractionReport, SeparationError>
 where
@@ -133,9 +143,18 @@ where
     let audio = audio_io::decode_audio(input_path)?;
     let source_name = audio_io::file_name(input_path);
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
-    let mut report = extract_to_directory(&audio, &output_dir, mode, tuning, cleanup, progress)?;
+    let mut report =
+        extract_to_directory(&audio, &output_dir, mode, tuning, cleanup, cancel, progress)?;
     report.source_name = source_name;
     Ok(report)
+}
+
+fn bail_if_cancelled(cancel: &CancelToken) -> Result<(), SeparationError> {
+    if cancel.is_cancelled() {
+        Err(SeparationError::Cancelled)
+    } else {
+        Ok(())
+    }
 }
 
 fn compute_stft(audio: &AudioBuffer) -> Stft {
@@ -605,6 +624,7 @@ mod tests {
             StemMode::VocalInstrumental,
             SeparationTuning::default(),
             StemCleanupOptions::default(),
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -636,6 +656,7 @@ mod tests {
             StemMode::FullBand,
             SeparationTuning::default(),
             StemCleanupOptions::default(),
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -667,6 +688,7 @@ mod tests {
                 artifact_reduction: 10,
             },
             StemCleanupOptions::default(),
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("gentle extract");
@@ -679,6 +701,7 @@ mod tests {
                 artifact_reduction: 0,
             },
             StemCleanupOptions::default(),
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("assertive extract");
@@ -717,6 +740,7 @@ mod tests {
                 enabled: true,
                 strength: 4,
             },
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("extract stems");
@@ -741,6 +765,7 @@ mod tests {
             StemMode::VocalInstrumental,
             SeparationTuning::default(),
             StemCleanupOptions::default(),
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("raw extract");
@@ -753,6 +778,7 @@ mod tests {
                 enabled: true,
                 strength: 10,
             },
+            &CancelToken::default(),
             |_, _, _| {},
         )
         .expect("clean extract");
@@ -763,6 +789,26 @@ mod tests {
             raw.reconstruction_error,
             clean.reconstruction_error
         );
+    }
+
+    #[test]
+    fn cancelled_token_aborts_classic_extraction() {
+        let audio = synthetic_audio();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let cancel = CancelToken::default();
+        cancel.cancel();
+
+        let result = extract_to_directory(
+            &audio,
+            temp.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning::default(),
+            StemCleanupOptions::default(),
+            &cancel,
+            |_, _, _| {},
+        );
+
+        assert!(matches!(result, Err(SeparationError::Cancelled)));
     }
 
     fn synthetic_audio() -> AudioBuffer {

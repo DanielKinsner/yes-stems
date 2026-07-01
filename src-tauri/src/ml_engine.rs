@@ -1,16 +1,18 @@
 use std::{
     env,
     ffi::OsString,
-    fs, io,
+    fs,
+    io::{self, Read},
     path::{Path, PathBuf},
-    process::{Command, Output},
-    time::{SystemTime, UNIX_EPOCH},
+    process::{Command, Output, Stdio},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use thiserror::Error;
 
 use crate::{
     audio_io::{self, AudioIoError},
+    cancel::CancelToken,
     stem_cleanup,
     types::{
         ExtractionReport, LocalMlStatus, StemCleanupOptions, StemFile, StemMode, TrackAnalysis,
@@ -60,6 +62,8 @@ pub enum MlEngineError {
     },
     #[error("mode {0:?} is not a local ML mode")]
     UnsupportedMode(StemMode),
+    #[error("extraction was cancelled")]
+    Cancelled,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +100,7 @@ pub fn extract_track_to_directory<F>(
     mode: StemMode,
     resource_dir: Option<PathBuf>,
     cleanup: StemCleanupOptions,
+    cancel: &CancelToken,
     mut progress: F,
 ) -> Result<ExtractionReport, MlEngineError>
 where
@@ -113,6 +118,9 @@ where
 
     let demucs_workspace = prepare_demucs_workspace(input_path)?;
 
+    if cancel.is_cancelled() {
+        return Err(MlEngineError::Cancelled);
+    }
     progress(
         "ml-ready",
         0.08,
@@ -123,7 +131,11 @@ where
         &demucs_workspace.input_path,
         &demucs_workspace.output_dir,
         resource_dir.as_deref(),
+        cancel,
     )?;
+    if cancel.is_cancelled() {
+        return Err(MlEngineError::Cancelled);
+    }
     if !output.status.success() {
         return Err(MlEngineError::RuntimeFailed {
             runner: output.runner,
@@ -317,10 +329,11 @@ fn run_demucs(
     input_path: &Path,
     work_dir: &Path,
     resource_dir: Option<&Path>,
+    cancel: &CancelToken,
 ) -> Result<DemucsOutput, MlEngineError> {
     let device = demucs_device();
     let runner = resolve_demucs_runner(resource_dir)?;
-    match invoke_demucs(&runner, model, &device, input_path, work_dir) {
+    match invoke_demucs(&runner, model, &device, input_path, work_dir, cancel) {
         Ok(output) => Ok(DemucsOutput {
             status: output.status,
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -369,6 +382,7 @@ fn invoke_demucs(
     device: &str,
     input_path: &Path,
     work_dir: &Path,
+    cancel: &CancelToken,
 ) -> std::io::Result<Output> {
     let mut command = Command::new(&runner.program);
     command.envs(runner.envs.iter().cloned());
@@ -382,7 +396,50 @@ fn invoke_demucs(
         .arg("-o")
         .arg(work_dir)
         .arg(input_path);
-    command.output()
+    run_child_with_cancel(command, cancel)
+}
+
+/// Run a child process to completion while remaining cancellable: the child is registered
+/// with the [`CancelToken`] so a Stop from the UI can kill it, and its stdout/stderr are
+/// drained on background threads so a long run cannot deadlock on a full pipe buffer.
+fn run_child_with_cancel(mut command: Command, cancel: &CancelToken) -> std::io::Result<Output> {
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+
+    let stdout_thread = child.stdout.take().map(spawn_drain);
+    let stderr_thread = child.stderr.take().map(spawn_drain);
+
+    cancel.register_child(child);
+
+    let status = loop {
+        if let Some(status) = cancel.poll_child()? {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(80));
+    };
+
+    let stdout = stdout_thread
+        .map(|handle| handle.join().unwrap_or_default())
+        .unwrap_or_default();
+    let stderr = stderr_thread
+        .map(|handle| handle.join().unwrap_or_default())
+        .unwrap_or_default();
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn spawn_drain<R: Read + Send + 'static>(mut reader: R) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut buffer = Vec::new();
+        let _ = reader.read_to_end(&mut buffer);
+        buffer
+    })
 }
 
 fn demucs_runners(resource_dir: Option<&Path>) -> Vec<DemucsRunner> {
