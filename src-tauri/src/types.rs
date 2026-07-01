@@ -86,12 +86,23 @@ impl StemCleanupOptions {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ExportFormat {
+    Wav16,
+    #[default]
+    Wav24,
+    Wav32f,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportStemsRequest {
     pub source_name: String,
     pub destination_root: String,
     pub stems: Vec<StemFile>,
+    #[serde(default)]
+    pub format: ExportFormat,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

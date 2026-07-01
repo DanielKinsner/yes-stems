@@ -50,6 +50,7 @@ import "./App.css";
 type StemMode = "localMlSix" | "localMlFour" | "vocalInstrumental" | "fullBand";
 type StageTab = "overview" | "spectrum" | "loudness" | "metrics";
 type PlayMode = "sequence" | "all";
+type ExportFormat = "wav16" | "wav24" | "wav32f";
 
 type TrackAnalysis = {
   fileName: string;
@@ -313,6 +314,11 @@ function App() {
   const [lastExportDir, setLastExportDir] = useState(() =>
     loadPersisted("lastExportDir", isDemo ? demoExportDir : "", (raw) => raw),
   );
+  const [exportFormat, setExportFormat] = useState<ExportFormat>(() =>
+    loadPersisted<ExportFormat>("exportFormat", "wav24", (raw) =>
+      raw === "wav16" || raw === "wav24" || raw === "wav32f" ? raw : "wav24",
+    ),
+  );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const allAudioRef = useRef<HTMLAudioElement[]>([]);
@@ -367,6 +373,7 @@ function App() {
       savePersisted("lastExportDir", lastExportDir);
     }
   }, [lastExportDir]);
+  useEffect(() => savePersisted("exportFormat", exportFormat), [exportFormat]);
 
   // Auto-dismiss the export success toast after a few seconds.
   useEffect(() => {
@@ -680,7 +687,12 @@ function App() {
     setIsExporting(true);
     try {
       const result = await invoke<ExportStemsResult>("export_stems", {
-        request: { sourceName: report.sourceName, destinationRoot: selected, stems: report.stems },
+        request: {
+          sourceName: report.sourceName,
+          destinationRoot: selected,
+          stems: report.stems,
+          format: exportFormat,
+        },
       });
       setLastExportDir(result.exportDir);
       setExportMessage(`Exported ${result.exportedFiles} files to ${result.exportDir}`);
@@ -1620,7 +1632,19 @@ function App() {
               <FolderInput size={17} />
               <span>{isExporting ? "Exporting…" : "Export All Stems"}</span>
             </button>
-            <div className="export-sub">Choose Output Folder</div>
+            <label className="export-format">
+              <span>Format</span>
+              <select
+                value={exportFormat}
+                disabled={isExporting}
+                aria-label="Export format"
+                onChange={(event) => setExportFormat(event.currentTarget.value as ExportFormat)}
+              >
+                <option value="wav24">WAV · 24-bit</option>
+                <option value="wav16">WAV · 16-bit</option>
+                <option value="wav32f">WAV · 32-bit float</option>
+              </select>
+            </label>
           </section>
         </aside>
       </section>

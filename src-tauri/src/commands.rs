@@ -11,12 +11,12 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
-    audio_io,
+    audio_io::{self, WavEncoding},
     cancel::CancelToken,
     ml_engine, separation,
     types::{
-        ExportStemsRequest, ExportStemsResult, ExtractRequest, ExtractionReport, LocalMlStatus,
-        ProgressEvent, TrackAnalysis,
+        ExportFormat, ExportStemsRequest, ExportStemsResult, ExtractRequest, ExtractionReport,
+        LocalMlStatus, ProgressEvent, TrackAnalysis,
     },
 };
 
@@ -184,6 +184,14 @@ fn export_stems_to_directory(request: ExportStemsRequest) -> Result<ExportStemsR
         )
     })?;
 
+    // 24-bit is the on-disk working format, so that export is a fast copy; other formats
+    // decode the working WAV and re-encode at the requested bit depth.
+    let encoding = match request.format {
+        ExportFormat::Wav24 => None,
+        ExportFormat::Wav16 => Some(WavEncoding::Int16),
+        ExportFormat::Wav32f => Some(WavEncoding::Float32),
+    };
+
     let mut exported_files = 0;
     for stem in request.stems {
         let source = PathBuf::from(&stem.path);
@@ -196,18 +204,29 @@ fn export_stems_to_directory(request: ExportStemsRequest) -> Result<ExportStemsR
             .ok_or_else(|| format!("cannot export stem with invalid path {}", source.display()))?;
         let target = export_dir.join(file_name);
 
-        if same_file(&source, &target) {
-            exported_files += 1;
-            continue;
+        match encoding {
+            None => {
+                if !same_file(&source, &target) {
+                    fs::copy(&source, &target).map_err(|error| {
+                        format!(
+                            "could not export {} to {}: {error}",
+                            source.display(),
+                            target.display()
+                        )
+                    })?;
+                }
+            }
+            Some(encoding) => {
+                let audio = audio_io::decode_audio(&source).map_err(|error| {
+                    format!(
+                        "could not read {} for re-encoding: {error}",
+                        source.display()
+                    )
+                })?;
+                audio_io::write_wav_encoded(&target, audio.sample_rate, &audio.samples, encoding)
+                    .map_err(|error| format!("could not write {}: {error}", target.display()))?;
+            }
         }
-
-        fs::copy(&source, &target).map_err(|error| {
-            format!(
-                "could not export {} to {}: {error}",
-                source.display(),
-                target.display()
-            )
-        })?;
         exported_files += 1;
     }
 
@@ -262,6 +281,7 @@ mod tests {
             source_name: "BILMURI \u{ff02} end".to_string(),
             destination_root: destination_root.to_string_lossy().to_string(),
             stems: vec![stem(&vocals), stem(&guitar)],
+            format: ExportFormat::Wav24,
         })
         .expect("export stems");
 
@@ -290,11 +310,38 @@ mod tests {
             source_name: "song".to_string(),
             destination_root: temp.path().to_string_lossy().to_string(),
             stems: vec![stem(&vocals)],
+            format: ExportFormat::Wav24,
         })
         .expect("export stems");
 
         assert_eq!(result.exported_files, 1);
         assert_eq!(PathBuf::from(result.export_dir), export_dir);
+    }
+
+    #[test]
+    fn export_reencodes_to_16_bit_when_requested() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let work_dir = temp.path().join("work");
+        let dest = temp.path().join("exports");
+        fs::create_dir_all(&work_dir).expect("work dir");
+        fs::create_dir_all(&dest).expect("dest dir");
+
+        let vocals = work_dir.join("vocals.wav");
+        let samples = vec![vec![0.0_f32, 0.5, -0.5, 0.25], vec![0.1, -0.1, 0.0, -0.25]];
+        audio_io::write_wav(&vocals, 44_100, &samples).expect("write 24-bit source");
+
+        let result = export_stems_to_directory(ExportStemsRequest {
+            source_name: "song".to_string(),
+            destination_root: dest.to_string_lossy().to_string(),
+            stems: vec![stem(&vocals)],
+            format: ExportFormat::Wav16,
+        })
+        .expect("export");
+
+        let exported = PathBuf::from(result.export_dir).join("vocals.wav");
+        let reader = hound::WavReader::open(exported).expect("read exported");
+        assert_eq!(reader.spec().bits_per_sample, 16);
+        assert_eq!(reader.spec().sample_format, hound::SampleFormat::Int);
     }
 
     #[test]

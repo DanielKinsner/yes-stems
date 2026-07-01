@@ -1502,6 +1502,42 @@ p {
   box-shadow: none;
 }
 
+.export-format {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+}
+
+.export-format > span {
+  color: var(--quiet);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+
+.export-format select {
+  flex: 1;
+  min-width: 0;
+  max-width: 170px;
+  height: 30px;
+  padding: 0 8px;
+  color: #dbe6f1;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: #0c141d;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.export-format select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .export-sub {
   margin-top: 8px;
   text-align: center;

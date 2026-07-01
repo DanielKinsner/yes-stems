@@ -436,7 +436,34 @@ describe("YES Stems app", () => {
         sourceName: "song",
         destinationRoot: "D:\\exports",
         stems: sixStemReport.stems,
+        format: "wav24",
       },
+    });
+  });
+
+  it("exports in a chosen format (16-bit)", async () => {
+    withTauri();
+    tauriMocks.open
+      .mockResolvedValueOnce("C:\\music\\song.wav")
+      .mockResolvedValueOnce("D:\\exports");
+    const onExport = vi.fn();
+    setupInvoke({ analysis: analysisFor("song"), report: sixStemReport, onExport });
+
+    render(<App />);
+
+    await selectSourceAndArm();
+    fireEvent.click(screen.getByRole("button", { name: /Run Extraction/i }));
+    await screen.findByText("98.2 MB");
+
+    fireEvent.change(screen.getByLabelText("Export format"), { target: { value: "wav16" } });
+    fireEvent.click(screen.getByRole("button", { name: /Export All Stems/i }));
+
+    await waitFor(() => {
+      expect(onExport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({ format: "wav16" }),
+        }),
+      );
     });
   });
 

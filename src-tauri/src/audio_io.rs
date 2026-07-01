@@ -329,7 +329,15 @@ fn waveform_peaks(audio: &AudioBuffer, buckets: usize) -> Vec<f32> {
     peaks
 }
 
-pub fn write_wav(path: &Path, sample_rate: u32, samples: &[Vec<f32>]) -> Result<(), AudioIoError> {
+/// WAV sample encodings supported for export. Extraction always writes `Int24`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WavEncoding {
+    Int16,
+    Int24,
+    Float32,
+}
+
+fn validate_samples(samples: &[Vec<f32>]) -> Result<(usize, usize), AudioIoError> {
     let channels = samples.len();
     let frames = samples.first().map_or(0, Vec::len);
     if channels == 0 || frames == 0 {
@@ -341,22 +349,46 @@ pub fn write_wav(path: &Path, sample_rate: u32, samples: &[Vec<f32>]) -> Result<
     {
         return Err(AudioIoError::NonFiniteSamples);
     }
+    Ok((channels, frames))
+}
+
+pub fn write_wav(path: &Path, sample_rate: u32, samples: &[Vec<f32>]) -> Result<(), AudioIoError> {
+    write_wav_encoded(path, sample_rate, samples, WavEncoding::Int24)
+}
+
+pub fn write_wav_encoded(
+    path: &Path,
+    sample_rate: u32,
+    samples: &[Vec<f32>],
+    encoding: WavEncoding,
+) -> Result<(), AudioIoError> {
+    let (channels, frames) = validate_samples(samples)?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
+    let (bits_per_sample, sample_format) = match encoding {
+        WavEncoding::Int16 => (16, hound::SampleFormat::Int),
+        WavEncoding::Int24 => (24, hound::SampleFormat::Int),
+        WavEncoding::Float32 => (32, hound::SampleFormat::Float),
+    };
     let spec = hound::WavSpec {
         channels: channels as u16,
         sample_rate,
-        bits_per_sample: 24,
-        sample_format: hound::SampleFormat::Int,
+        bits_per_sample,
+        sample_format,
     };
 
     let mut writer = hound::WavWriter::create(path, spec)?;
     for frame_index in 0..frames {
         for channel in samples {
-            writer.write_sample(float_to_i24(channel[frame_index]))?;
+            let sample = channel[frame_index];
+            match encoding {
+                WavEncoding::Int16 => writer.write_sample(float_to_i16(sample))?,
+                WavEncoding::Int24 => writer.write_sample(float_to_i24(sample))?,
+                WavEncoding::Float32 => writer.write_sample(sample.clamp(-1.0, 1.0))?,
+            }
         }
     }
     writer.finalize()?;
@@ -402,6 +434,15 @@ fn float_to_i24(sample: f32) -> i32 {
         -8_388_608
     } else {
         (clamped * 8_388_607.0).round() as i32
+    }
+}
+
+fn float_to_i16(sample: f32) -> i16 {
+    let clamped = sample.clamp(-1.0, 1.0);
+    if clamped <= -1.0 {
+        i16::MIN
+    } else {
+        (clamped * 32_767.0).round() as i16
     }
 }
 
