@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -27,6 +27,7 @@ use crate::{
 pub struct ExtractionState {
     running: Arc<AtomicBool>,
     cancel: CancelToken,
+    job_counter: AtomicU64,
 }
 
 /// RAII guard that clears the `running` flag when an extraction finishes — including on
@@ -75,11 +76,23 @@ pub async fn extract_stems(
     }
     let _guard = RunningGuard(running);
 
+    let job_id = format!(
+        "job-{}",
+        state.job_counter.fetch_add(1, Ordering::SeqCst) + 1
+    );
+    tracing::info!(
+        job_id = %job_id,
+        mode = ?request.mode,
+        input = %request.input_path,
+        "extraction requested"
+    );
+
     state.cancel.reset();
     let cancel = state.cancel.clone();
+    let job_id_for_events = job_id.clone();
     let resource_dir = app.path().resource_dir().ok();
     let managed_output_root = managed_working_root(app.path().app_data_dir().ok().as_deref());
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let input_path = PathBuf::from(request.input_path);
         let mode = request.mode;
         let tuning = request.tuning.unwrap_or_default().clamped();
@@ -90,6 +103,7 @@ pub async fn extract_stems(
             let _ = progress_app.emit(
                 "stems://progress",
                 ProgressEvent {
+                    job_id: job_id_for_events.clone(),
                     phase: phase.to_string(),
                     progress,
                     detail,
@@ -122,7 +136,17 @@ pub async fn extract_stems(
         }
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())?;
+
+    match &result {
+        Ok(report) => {
+            tracing::info!(job_id = %job_id, stems = report.stems.len(), "extraction complete")
+        }
+        Err(error) => {
+            tracing::warn!(job_id = %job_id, %error, "extraction ended with an error or cancellation")
+        }
+    }
+    result
 }
 
 /// Abort the in-flight extraction (kills the Demucs child if one is running).

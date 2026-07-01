@@ -73,6 +73,7 @@ type ProgressEvent = {
   phase: string;
   progress: number;
   detail: string;
+  jobId?: string;
 };
 
 type StemFile = {

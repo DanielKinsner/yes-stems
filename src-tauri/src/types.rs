@@ -119,6 +119,8 @@ pub struct LocalMlStatus {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressEvent {
+    /// Correlates progress events with a single extraction run.
+    pub job_id: String,
     pub phase: String,
     pub progress: f32,
     pub detail: String,
