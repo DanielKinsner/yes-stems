@@ -499,6 +499,17 @@ describe("YES Stems app", () => {
     });
   });
 
+  it("opens the settings panel from the header gear", () => {
+    render(<App />);
+
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Default export folder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open logs folder/i })).toBeInTheDocument();
+  });
+
   it("switches mode with the number-key shortcut", () => {
     render(<App />);
 

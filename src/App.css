@@ -76,6 +76,7 @@ p {
  * on load and resize. transform-origin is top-left so the canvas grows to fill from 0,0.
  */
 .app-shell {
+  position: relative;
   width: 1440px;
   height: 820px;
   transform-origin: top left;
@@ -1712,6 +1713,107 @@ p {
 
 .ready.busy .pill {
   border-bottom-color: var(--amber);
+}
+
+/* ---------- Settings modal ---------- */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 8, 12, 0.66);
+}
+
+.modal-card {
+  width: 460px;
+  max-width: 100%;
+  padding: 16px 20px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.modal-head h2 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f2f7fc;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.setting-text strong {
+  display: block;
+  color: #e7f0f9;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.setting-text small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.setting-value {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.setting-row .ghost-button {
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+  padding: 0 14px;
+  flex: none;
+}
+
+.ghost-button.danger {
+  color: #ffd0d0;
+  border-color: rgba(255, 125, 125, 0.45);
+}
+
+.ghost-button.danger:hover:not(:disabled) {
+  border-color: rgba(255, 125, 125, 0.8);
+  background: rgba(255, 125, 125, 0.1);
+}
+
+.modal-foot {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--quiet);
+  font-size: 11px;
 }
 
 /* ---------- Error boundary ---------- */

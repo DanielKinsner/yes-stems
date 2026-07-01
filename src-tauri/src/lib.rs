@@ -23,6 +23,7 @@ pub fn run() {
             commands::check_local_ml_runtime,
             commands::extract_stems,
             commands::cancel_extraction,
+            commands::log_directory,
             commands::export_stems
         ])
         .run(tauri::generate_context!())

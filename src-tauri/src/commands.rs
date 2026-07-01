@@ -155,6 +155,17 @@ pub fn cancel_extraction(state: tauri::State<'_, ExtractionState>) {
     state.cancel.cancel();
 }
 
+/// Return the on-disk log directory (created on startup) so the UI can reveal it.
+#[tauri::command]
+pub fn log_directory(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| format!("could not resolve the log directory: {error}"))?;
+    let _ = fs::create_dir_all(&dir);
+    Ok(dir.to_string_lossy().to_string())
+}
+
 fn managed_working_root(app_data_dir: Option<&Path>) -> PathBuf {
     app_data_dir
         .map(Path::to_path_buf)

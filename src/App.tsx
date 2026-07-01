@@ -253,6 +253,20 @@ function savePersisted(key: string, value: string) {
   }
 }
 
+function clearPersisted() {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+  try {
+    const keys = Object.keys(window.localStorage).filter((key) => key.startsWith(STORE_PREFIX));
+    for (const key of keys) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // storage disabled — nothing to clear
+  }
+}
+
 function isStemMode(value: string): value is StemMode {
   return Object.prototype.hasOwnProperty.call(modeDetails, value);
 }
@@ -319,6 +333,10 @@ function App() {
       raw === "wav16" || raw === "wav24" || raw === "wav32f" ? raw : "wav24",
     ),
   );
+  const [defaultExportDir, setDefaultExportDir] = useState(() =>
+    loadPersisted("defaultExportDir", "", (raw) => raw),
+  );
+  const [showSettings, setShowSettings] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const allAudioRef = useRef<HTMLAudioElement[]>([]);
@@ -374,6 +392,7 @@ function App() {
     }
   }, [lastExportDir]);
   useEffect(() => savePersisted("exportFormat", exportFormat), [exportFormat]);
+  useEffect(() => savePersisted("defaultExportDir", defaultExportDir), [defaultExportDir]);
 
   // Auto-dismiss the export success toast after a few seconds.
   useEffect(() => {
@@ -666,6 +685,35 @@ function App() {
     }
   }
 
+  async function chooseDefaultExportDir() {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+    const picked = await open({ multiple: false, directory: true });
+    if (typeof picked === "string") {
+      setDefaultExportDir(picked);
+    }
+  }
+
+  async function openLogs() {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+    try {
+      const dir = await invoke<string>("log_directory");
+      await openPath(dir);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  function resetPreferences() {
+    clearPersisted();
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  }
+
   async function revealOutput(dir?: string) {
     const target = dir ?? report?.outputDir;
     if (target && hasTauriRuntime()) {
@@ -680,9 +728,14 @@ function App() {
     setError("");
     setExportError("");
     setExportMessage("");
-    const selected = await open({ multiple: false, directory: true });
-    if (typeof selected !== "string") {
-      return;
+    // Use the configured default folder if set; otherwise prompt each time.
+    let selected: string | null = defaultExportDir || null;
+    if (!selected) {
+      const picked = await open({ multiple: false, directory: true });
+      if (typeof picked !== "string") {
+        return;
+      }
+      selected = picked;
     }
     setIsExporting(true);
     try {
@@ -1057,11 +1110,11 @@ function App() {
             <Atom size={16} />
           </button>
           <button
-            className="icon-button"
+            className={`icon-button ${showSettings ? "is-on" : ""}`}
             type="button"
-            aria-label="Settings unavailable"
-            title="Settings are not available in this build."
-            disabled
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setShowSettings((open) => !open)}
           >
             <Settings size={16} />
           </button>
@@ -1701,6 +1754,78 @@ function App() {
           </span>
         </div>
       </footer>
+
+      {showSettings ? (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          onClick={() => setShowSettings(false)}
+        >
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Settings</h2>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close settings"
+                onClick={() => setShowSettings(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-text">
+                <strong>Default export folder</strong>
+                <small>When set, Export skips the folder prompt.</small>
+              </div>
+              <div className="setting-control">
+                <span className="setting-value" title={defaultExportDir || undefined}>
+                  {defaultExportDir || "Ask every time"}
+                </span>
+                <button className="ghost-button" type="button" onClick={chooseDefaultExportDir}>
+                  Choose…
+                </button>
+                {defaultExportDir ? (
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => setDefaultExportDir("")}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-text">
+                <strong>Logs</strong>
+                <small>Structured logs are written locally for troubleshooting.</small>
+              </div>
+              <button className="ghost-button" type="button" onClick={openLogs}>
+                Open logs folder
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-text">
+                <strong>Reset preferences</strong>
+                <small>Clear saved mode, cleanup, volume, and folders.</small>
+              </div>
+              <button className="ghost-button danger" type="button" onClick={resetPreferences}>
+                Reset
+              </button>
+            </div>
+
+            <div className="modal-foot">
+              <span>YES Stems · 100% local, offline</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
