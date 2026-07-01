@@ -325,4 +325,50 @@ mod tests {
             Err(AudioIoError::NonFiniteSamples)
         ));
     }
+
+    #[test]
+    fn decodes_a_written_wav_roundtrip() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("roundtrip.wav");
+        let left: Vec<f32> = (0..1000).map(|i| (i as f32 * 0.01).sin() * 0.8).collect();
+        let right: Vec<f32> = (0..1000).map(|i| (i as f32 * 0.02).cos() * 0.5).collect();
+        write_wav(&path, 48_000, &[left.clone(), right.clone()]).expect("write wav");
+
+        let audio = decode_audio(&path).expect("decode");
+
+        assert_eq!(audio.sample_rate, 48_000);
+        assert_eq!(audio.channels, 2);
+        assert_eq!(audio.frames(), 1000);
+        // 24-bit quantization keeps the decoded samples very close to the originals.
+        for (decoded, original) in audio.samples[0].iter().zip(&left) {
+            assert!(
+                (decoded - original).abs() < 1.0e-3,
+                "left {decoded} vs {original}"
+            );
+        }
+        for (decoded, original) in audio.samples[1].iter().zip(&right) {
+            assert!(
+                (decoded - original).abs() < 1.0e-3,
+                "right {decoded} vs {original}"
+            );
+        }
+    }
+
+    #[test]
+    fn analyze_track_reports_shape_and_waveform_peaks() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("song.wav");
+        let mono: Vec<f32> = (0..2000).map(|i| (i as f32 * 0.05).sin() * 0.9).collect();
+        write_wav(&path, 44_100, &[mono]).expect("write wav");
+
+        let analysis = analyze_track(&path).expect("analyze");
+
+        assert_eq!(analysis.file_name, "song");
+        assert_eq!(analysis.sample_rate, 44_100);
+        assert_eq!(analysis.channels, 1);
+        assert_eq!(analysis.frames, 2000);
+        assert!((analysis.duration_seconds - 2000.0 / 44_100.0).abs() < 1.0e-6);
+        assert_eq!(analysis.waveform_peaks.len(), 96);
+        assert!(analysis.peak > 0.8 && analysis.peak <= 1.0);
+    }
 }

@@ -792,6 +792,33 @@ mod tests {
     }
 
     #[test]
+    fn extraction_emits_progress_phases_in_order() {
+        let audio = synthetic_audio();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut phases = Vec::new();
+
+        extract_to_directory(
+            &audio,
+            temp.path(),
+            StemMode::VocalInstrumental,
+            SeparationTuning::default(),
+            StemCleanupOptions::default(),
+            &CancelToken::default(),
+            |phase, _progress, _detail| phases.push(phase.to_string()),
+        )
+        .expect("extract stems");
+
+        assert_eq!(phases.first().map(String::as_str), Some("analysis"));
+        assert_eq!(phases.last().map(String::as_str), Some("complete"));
+        for expected in ["analysis", "render", "verify", "export", "complete"] {
+            assert!(
+                phases.iter().any(|phase| phase == expected),
+                "missing {expected}"
+            );
+        }
+    }
+
+    #[test]
     fn cancelled_token_aborts_classic_extraction() {
         let audio = synthetic_audio();
         let temp = tempfile::tempdir().expect("temp dir");
