@@ -383,7 +383,11 @@ function App() {
         event.preventDefault();
         togglePlay();
       } else if (event.key === "Escape") {
-        stopPlayback();
+        if (isExtracting) {
+          void cancelExtraction();
+        } else {
+          stopPlayback();
+        }
       } else if (event.key >= "1" && event.key <= "4") {
         const nextMode = modeOrder[Number(event.key) - 1];
         if (nextMode) {
@@ -614,10 +618,27 @@ function App() {
       setPlayhead({ current: 0, total: nextReport.durationSeconds });
       setProgress({ phase: "complete", progress: 1, detail: "Stem files written" });
     } catch (caught) {
-      setProgress({ phase: "error", progress: 0, detail: "Extraction failed" });
-      setError(errorMessage(caught));
+      const message = errorMessage(caught);
+      if (/cancel/i.test(message)) {
+        setProgress({ phase: "idle", progress: 0, detail: "Extraction cancelled" });
+      } else {
+        setProgress({ phase: "error", progress: 0, detail: "Extraction failed" });
+        setError(message);
+      }
     } finally {
       setIsExtracting(false);
+    }
+  }
+
+  async function cancelExtraction() {
+    if (!isExtracting || !hasTauriRuntime()) {
+      return;
+    }
+    setProgress({ phase: "cancelling", progress: 0, detail: "Cancelling…" });
+    try {
+      await invoke("cancel_extraction");
+    } catch (caught) {
+      setError(errorMessage(caught));
     }
   }
 
@@ -1066,10 +1087,22 @@ function App() {
           </section>
 
           <div className="run-wrap">
-            <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
-              <Play size={17} fill="currentColor" />
-              <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
-            </button>
+            {isExtracting ? (
+              <button
+                className="stop-button"
+                type="button"
+                aria-label="Stop extraction"
+                onClick={cancelExtraction}
+              >
+                <Square size={15} fill="currentColor" />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
+                <Play size={17} fill="currentColor" />
+                <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
+              </button>
+            )}
             <div className="run-eta">{etaText}</div>
           </div>
         </aside>

@@ -407,6 +407,38 @@ describe("YES Stems app", () => {
     });
   });
 
+  it("cancels an in-flight extraction with the Stop button", async () => {
+    withTauri();
+    tauriMocks.open.mockResolvedValueOnce("C:\\music\\song.wav");
+    // extract_stems never resolves, so the UI stays in the extracting state.
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      switch (command) {
+        case "check_local_ml_runtime":
+          return Promise.resolve(RUNTIME_READY);
+        case "analyze_track":
+          return Promise.resolve(analysisFor("song"));
+        case "extract_stems":
+          return new Promise(() => {});
+        case "cancel_extraction":
+          return Promise.resolve();
+        default:
+          return Promise.reject(new Error(`Unexpected command ${command}`));
+      }
+    });
+
+    render(<App />);
+
+    await selectSourceAndArm();
+    fireEvent.click(screen.getByRole("button", { name: /Run Extraction/i }));
+
+    const stop = await screen.findByRole("button", { name: /Stop extraction/i });
+    fireEvent.click(stop);
+
+    await waitFor(() => {
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("cancel_extraction");
+    });
+  });
+
   it("switches mode with the number-key shortcut", () => {
     render(<App />);
 
