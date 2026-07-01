@@ -349,7 +349,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 ### Stage E — Launch
 - [ ] **Ship-blocker:** add `LICENSE` (pick one — proprietary EULA or OSS).
-- [x] Write `PRIVACY.md` and document the network-call audit (no runtime network calls; capabilities limited to core/dialog/opener). **CSP still `null`** — a hardened policy is recommended in `SECURITY.md` but must be smoke-tested in a real `tauri` run before applying (asset protocol powers audio audition).
+- [x] Write `PRIVACY.md` and document the network-call audit (no runtime network calls; capabilities limited to core/dialog/opener). A **hardened CSP is now set** in `tauri.conf.json` (asset protocol + IPC only) — **needs a `tauri dev` audio smoke-test** before release (see `SECURITY.md`).
 - [ ] Add `TERMS.md` / EULA.
 - [x] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`; `NOTICE.md` for third-party attribution.
 - [ ] Write end-user docs: first-run onboarding, supported-formats matrix, system requirements, FAQ, troubleshooting (especially the `RuntimeUnavailable` path), pricing/business-model.

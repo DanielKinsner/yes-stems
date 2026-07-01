@@ -27,9 +27,8 @@ untrusted audio input, and privilege scope of the webview.
 
 ## Hardening backlog
 
-- **Content-Security-Policy.** `tauri.conf.json` currently sets `csp: null`. A hardened policy for
-  this app (asset protocol + IPC only) is recommended and should be verified against a real
-  `tauri dev`/build run — audio audition uses the asset protocol, so the policy must allow it:
+- **Content-Security-Policy.** A hardened policy is now set in `tauri.conf.json`
+  (`app.security.csp`) — asset protocol + IPC only, no remote origins:
 
   ```
   default-src 'self';
@@ -43,7 +42,9 @@ untrusted audio input, and privilege scope of the webview.
   frame-ancestors 'none'
   ```
 
-  This is documented here (rather than applied blind) because it must be smoke-tested in the
-  packaged app — a too-strict `media-src`/`img-src` would break stem playback.
+  **Smoke-test required before release:** run `npm run tauri dev`, load a track, extract, and
+  **play a stem** — audio audition uses the asset protocol, so if `media-src` is wrong, playback
+  breaks silently. If so, adjust `media-src`/`img-src` (the asset host is `http://asset.localhost`
+  on Windows) rather than reverting to `csp: null`.
 - **Code signing.** Installers and the bundled `demucs.exe` are not yet Authenticode-signed.
 - **Checksum verification** of downloaded model weights at build time.
