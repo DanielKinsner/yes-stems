@@ -62,6 +62,8 @@ pub enum MlEngineError {
     },
     #[error("mode {0:?} is not a local ML mode")]
     UnsupportedMode(StemMode),
+    #[error("{0}")]
+    TrackTooLong(String),
     #[error("extraction was cancelled")]
     Cancelled,
 }
@@ -113,6 +115,18 @@ where
     let cleanup = cleanup.clamped();
     let source_name = audio_io::file_name(input_path);
     let analysis = audio_io::analyze_track(input_path)?;
+    // Pre-flight OOM guard: refuse tracks past the hard duration cap before handing the whole
+    // file to the Demucs subprocess (which would spike memory on a long track); warn on the heavy
+    // band. See preflight.rs.
+    match crate::preflight::preflight(analysis.duration_seconds) {
+        crate::preflight::PreflightVerdict::Reject(message) => {
+            return Err(MlEngineError::TrackTooLong(message));
+        }
+        crate::preflight::PreflightVerdict::Warn(message) => {
+            tracing::warn!(%message, "local ML separation pre-flight warning");
+        }
+        crate::preflight::PreflightVerdict::Ok => {}
+    }
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
     fs::create_dir_all(&output_dir).map_err(MlEngineError::OutputDirectory)?;
 

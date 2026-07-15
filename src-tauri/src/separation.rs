@@ -21,6 +21,8 @@ pub enum SeparationError {
     Audio(#[from] AudioIoError),
     #[error("could not create output directory: {0}")]
     OutputDirectory(std::io::Error),
+    #[error("{0}")]
+    TrackTooLong(String),
     #[error("extraction was cancelled")]
     Cancelled,
 }
@@ -141,6 +143,17 @@ where
 {
     progress("decode", 0.04, "decoding source audio locally".to_string());
     let audio = audio_io::decode_audio(input_path)?;
+    // Pre-flight OOM guard: refuse tracks past the hard duration cap before the STFT path
+    // allocates its (length-proportional) spectra buffers; warn on the heavy band. See preflight.rs.
+    match crate::preflight::preflight(audio.duration_seconds()) {
+        crate::preflight::PreflightVerdict::Reject(message) => {
+            return Err(SeparationError::TrackTooLong(message));
+        }
+        crate::preflight::PreflightVerdict::Warn(message) => {
+            tracing::warn!(%message, "stem separation pre-flight warning");
+        }
+        crate::preflight::PreflightVerdict::Ok => {}
+    }
     let source_name = audio_io::file_name(input_path);
     let output_dir = audio_io::unique_output_dir(output_root, &source_name);
     let mut report =

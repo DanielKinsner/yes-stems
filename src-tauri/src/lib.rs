@@ -2,6 +2,7 @@ mod audio_io;
 mod cancel;
 mod commands;
 mod ml_engine;
+mod preflight;
 mod separation;
 mod stem_cleanup;
 mod types;
