@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -11,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
+  AlertTriangle,
   Atom,
   AudioWaveform,
   BarChart3,
@@ -37,6 +39,7 @@ import {
   Pause,
   Piano,
   Play,
+  RefreshCw,
   Settings,
   Sparkles,
   Square,
@@ -62,6 +65,8 @@ type TrackAnalysis = {
   waveformPeaks: number[];
   spectrum?: number[];
   loudness?: number[];
+  separationAllowed: boolean;
+  separationAdvisory: string | null;
 };
 
 type LocalMlStatus = {
@@ -200,6 +205,8 @@ function buildDemoAnalysis(): TrackAnalysis {
     waveformPeaks: demoWaveform,
     spectrum: demoSpectrum,
     loudness: demoLoudness,
+    separationAllowed: true,
+    separationAdvisory: null,
   };
 }
 
@@ -300,6 +307,7 @@ function App() {
     isDemo ? buildDemoAnalysis() : null,
   );
   const [localMlStatus, setLocalMlStatus] = useState<LocalMlStatus | null>(null);
+  const [isCheckingLocalRuntime, setIsCheckingLocalRuntime] = useState(hasTauriRuntime());
   const [report, setReport] = useState<ExtractionReport | null>(() =>
     isDemo ? buildDemoReport() : null,
   );
@@ -344,6 +352,10 @@ function App() {
   const selectionAnchorRef = useRef(0);
   const timelineDraggingRef = useRef(false);
   const scrubbingRef = useRef(false);
+  const runtimeCheckIdRef = useRef(0);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const settingsDialogRef = useRef<HTMLDivElement | null>(null);
+  const settingsCloseRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!hasTauriRuntime()) {
@@ -406,6 +418,9 @@ function App() {
   // Keyboard shortcuts: Space (play/stop), Esc (stop), Ctrl/Cmd+O (open), 1–4 (switch mode).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (showSettings) {
+        return;
+      }
       const target = event.target as HTMLElement | null;
       const typing =
         target != null &&
@@ -441,7 +456,7 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report, mode, isExtracting, isPlaying, soloStem, playMode, mutedStems, inputPath]);
+  }, [report, mode, isExtracting, isPlaying, soloStem, playMode, mutedStems, inputPath, showSettings]);
 
   // Drag-and-drop an audio file anywhere on the window to load it (desktop only).
   useEffect(() => {
@@ -486,36 +501,62 @@ function App() {
   }, [isExtracting]);
 
   useEffect(() => {
-    if (!hasTauriRuntime()) {
+    void refreshLocalMlStatus();
+    return () => {
+      runtimeCheckIdRef.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!showSettings) {
       return;
     }
-    let alive = true;
-    invoke<LocalMlStatus>("check_local_ml_runtime")
-      .then((status) => {
-        if (alive) {
-          setLocalMlStatus(status);
-        }
-      })
-      .catch((caught) => {
-        if (alive) {
-          setLocalMlStatus({
-            available: false,
-            runner: null,
-            device: "cpu",
-            checked: [],
-            detail: errorMessage(caught),
-          });
-        }
-      });
+
+    settingsCloseRef.current?.focus();
+
+    function handleDialogKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setShowSettings(false);
+        return;
+      }
+      if (event.key !== "Tab" || !settingsDialogRef.current) {
+        return;
+      }
+
+      const focusable = Array.from(
+        settingsDialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleDialogKeyDown);
     return () => {
-      alive = false;
+      document.removeEventListener("keydown", handleDialogKeyDown);
+      settingsButtonRef.current?.focus();
     };
-  }, []);
+  }, [showSettings]);
 
   const localMode = isLocalMlMode(mode);
   const classicMode = !localMode;
   const localRuntimeReady = !localMode || !hasTauriRuntime() || localMlStatus?.available === true;
-  const canRun = inputPath.length > 0 && !isExtracting && localRuntimeReady;
+  const separationAllowed = analysis?.separationAllowed !== false;
+  const canRun = inputPath.length > 0 && !isExtracting && localRuntimeReady && separationAllowed;
   const selectedMode = modeDetails[mode];
   const progressPercent = Math.round(progress.progress * 100);
   const sourceName = analysis?.fileName ?? (inputPath ? fileNameFromPath(inputPath) : "No source loaded");
@@ -586,6 +627,35 @@ function App() {
   })();
 
   const footerPath = lastExportDir || report?.outputDir || "Chosen when you export";
+
+  async function refreshLocalMlStatus() {
+    if (!hasTauriRuntime()) {
+      return;
+    }
+    const checkId = runtimeCheckIdRef.current + 1;
+    runtimeCheckIdRef.current = checkId;
+    setIsCheckingLocalRuntime(true);
+    try {
+      const status = await invoke<LocalMlStatus>("check_local_ml_runtime");
+      if (runtimeCheckIdRef.current === checkId) {
+        setLocalMlStatus(status);
+      }
+    } catch (caught) {
+      if (runtimeCheckIdRef.current === checkId) {
+        setLocalMlStatus({
+          available: false,
+          runner: null,
+          device: "cpu",
+          checked: [],
+          detail: errorMessage(caught),
+        });
+      }
+    } finally {
+      if (runtimeCheckIdRef.current === checkId) {
+        setIsCheckingLocalRuntime(false);
+      }
+    }
+  }
 
   async function analyzePath(selected: string) {
     resetExtractionState();
@@ -784,6 +854,29 @@ function App() {
     setProgress((current) =>
       current.phase === "complete" ? { phase: "ready", progress: 0, detail: "Mode changed" } : current,
     );
+  }
+
+  function handleModeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentMode: StemMode) {
+    const modes = Object.keys(modeDetails) as StemMode[];
+    const currentIndex = modes.indexOf(currentMode);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % modes.length;
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + modes.length) % modes.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = modes.length - 1;
+    }
+
+    if (nextIndex == null) {
+      return;
+    }
+    event.preventDefault();
+    const nextMode = modes[nextIndex];
+    handleModeChange(nextMode);
+    document.querySelector<HTMLElement>(`[data-stem-mode="${nextMode}"]`)?.focus();
   }
 
   function beginSingleStem(path: string) {
@@ -1068,12 +1161,38 @@ function App() {
     }
   }
 
+  function handleScrubKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!report) {
+      return;
+    }
+    const current = scrubPercent(playhead) / 100;
+    let next: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      next = current + 0.05;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      next = current - 0.05;
+    } else if (event.key === "PageUp") {
+      next = current + 0.1;
+    } else if (event.key === "PageDown") {
+      next = current - 0.1;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = 1;
+    }
+    if (next == null) {
+      return;
+    }
+    event.preventDefault();
+    seekTo(next);
+  }
+
   return (
     <main className="app-shell">
       <header className="app-chrome">
         <div className="chrome-left">
           <span className="brand-mark" aria-hidden="true">
-            <AudioWaveform size={20} />
+            <SuiteBrandMark />
           </span>
           <h1>
             <b>YES</b> Stems
@@ -1102,7 +1221,7 @@ function App() {
 
         <div className="chrome-right">
           <button
-            className={`icon-button ${localRuntimeReady ? "is-on" : ""}`}
+            className={`icon-button engine-status ${localRuntimeReady ? "is-on" : ""}`}
             type="button"
             aria-label="Local engine status"
             title={engineStatusText(mode, localMlStatus)}
@@ -1110,6 +1229,7 @@ function App() {
             <Atom size={16} />
           </button>
           <button
+            ref={settingsButtonRef}
             className={`icon-button ${showSettings ? "is-on" : ""}`}
             type="button"
             aria-label="Settings"
@@ -1134,7 +1254,7 @@ function App() {
         <aside className="rack left-rack" aria-label="Extraction setup">
           <section className="module pad source-module">
             <div className="section-heading">
-              <span className="num">1</span>
+              <span className="num">01</span>
               <span>Source</span>
               <span className="dot" aria-hidden="true" />
             </div>
@@ -1150,23 +1270,35 @@ function App() {
             <button className="ghost-button" type="button" onClick={chooseInput} disabled={isExtracting}>
               <span>Change File</span>
             </button>
+            {analysis?.separationAdvisory ? (
+              <div
+                className={`separation-advisory ${analysis.separationAllowed ? "warn" : "blocked"}`}
+                role={analysis.separationAllowed ? "status" : "alert"}
+              >
+                <AlertTriangle size={14} aria-hidden="true" />
+                <span>{analysis.separationAdvisory}</span>
+              </div>
+            ) : null}
           </section>
 
           <section className="module pad mode-module">
             <div className="section-heading">
-              <span className="num">2</span>
+              <span className="num">02</span>
               <span>Mode</span>
             </div>
             <div className="mode-list" role="tablist" aria-label="Stem mode">
               {(Object.keys(modeDetails) as StemMode[]).map((key) => (
                 <button
                   key={key}
+                  data-stem-mode={key}
                   type="button"
                   role="tab"
                   aria-selected={mode === key}
+                  tabIndex={mode === key ? 0 : -1}
                   className={`mode-card ${mode === key ? "selected" : ""}`}
                   disabled={isExtracting}
                   onClick={() => handleModeChange(key)}
+                  onKeyDown={(event) => handleModeKeyDown(event, key)}
                 >
                   <span className="glyph" aria-hidden="true">
                     <ModeIcon mode={key} size={16} />
@@ -1179,6 +1311,37 @@ function App() {
               ))}
             </div>
           </section>
+
+          {localMode && hasTauriRuntime() && localMlStatus?.available === false ? (
+            <section className="runtime-alert" role="alert" aria-label="Local ML unavailable">
+              <div className="runtime-alert-copy">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <div>
+                  <strong>Local ML unavailable</strong>
+                  <p>{localMlStatus.detail}</p>
+                </div>
+              </div>
+              <div className="runtime-alert-actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  aria-label="Retry local engine check"
+                  disabled={isCheckingLocalRuntime}
+                  onClick={refreshLocalMlStatus}
+                >
+                  <RefreshCw size={13} aria-hidden="true" />
+                  {isCheckingLocalRuntime ? "Checking…" : "Retry"}
+                </button>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() => handleModeChange("vocalInstrumental")}
+                >
+                  Use Classic DSP
+                </button>
+              </div>
+            </section>
+          ) : null}
 
           <section className="module pad options-module">
             <div className="section-heading">
@@ -1275,9 +1438,19 @@ function App() {
                 <span>Stop</span>
               </button>
             ) : (
-              <button className="run-button" type="button" disabled={!canRun} onClick={runExtraction}>
+              <button
+                className="run-button"
+                type="button"
+                disabled={!canRun}
+                aria-label={separationAllowed ? undefined : "Track is over the separation limit"}
+                onClick={runExtraction}
+              >
                 <Play size={17} fill="currentColor" />
-                <span>{runButtonText(isExtracting, localMode, localRuntimeReady)}</span>
+                <span>
+                  {separationAllowed
+                    ? runButtonText(isExtracting, localMode, localRuntimeReady)
+                    : "Track too long"}
+                </span>
               </button>
             )}
             <div className="run-eta">{etaText}</div>
@@ -1453,7 +1626,7 @@ function App() {
           <div className="module stems-module">
             <div className="stems-head">
               <div className="section-heading">
-                <span className="num">3</span>
+                <span className="num">03</span>
                 <span>Stems Preview</span>
               </div>
               <div className="solo-label">Solo</div>
@@ -1565,10 +1738,14 @@ function App() {
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(scrubPercent(playhead))}
+              aria-valuetext={`${formatClock(playhead.current)} of ${formatClock(playhead.total || analysis?.durationSeconds || 0)}`}
+              aria-disabled={!report}
+              tabIndex={report ? 0 : -1}
               onPointerDown={handleScrubPointerDown}
               onPointerMove={handleScrubPointerMove}
               onPointerUp={handleScrubPointerUp}
               onPointerCancel={handleScrubPointerUp}
+              onKeyDown={handleScrubKeyDown}
             >
               <div className="done" style={{ width: `${scrubPercent(playhead)}%` }} />
               <div className="knob" style={{ left: `${scrubPercent(playhead)}%` }} />
@@ -1757,17 +1934,19 @@ function App() {
       </footer>
 
       {showSettings ? (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Settings"
-          onClick={() => setShowSettings(false)}
-        >
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div
+            ref={settingsDialogRef}
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="modal-head">
-              <h2>Settings</h2>
+              <h2 id="settings-title">Settings</h2>
               <button
+                ref={settingsCloseRef}
                 className="icon-button"
                 type="button"
                 aria-label="Close settings"
@@ -1908,6 +2087,14 @@ function ModeIcon({ mode, size }: { mode: StemMode; size: number }) {
     return <Mic2 size={size} />;
   }
   return <Layers3 size={size} />;
+}
+
+function SuiteBrandMark() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 6h2v12H4zM8 10h2v8H8zM12 4h2v16h-2zM16 8h2v10h-2zM20 12h2v6h-2z" fill="currentColor" />
+    </svg>
+  );
 }
 
 type StemRow = {

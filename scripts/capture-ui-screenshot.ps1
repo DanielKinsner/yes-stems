@@ -38,7 +38,18 @@ function Remove-TempProfile {
     throw "Refusing to remove temporary browser profile outside TEMP: $target"
   }
 
-  Remove-Item -LiteralPath $target -Recurse -Force
+  for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+      Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+      return
+    } catch {
+      if ($attempt -eq 5) {
+        Write-Warning "Could not fully remove temporary browser profile after 5 attempts: $target"
+        return
+      }
+      Start-Sleep -Milliseconds 200
+    }
+  }
 }
 
 function Test-PreviewUrl {
@@ -68,6 +79,11 @@ try {
   $browserArgs = @(
     "--headless=new",
     "--disable-gpu",
+    "--disable-background-mode",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-crash-reporter",
+    "--disable-features=Crashpad",
     "--no-first-run",
     "--no-default-browser-check",
     "--user-data-dir=$profile",
@@ -85,5 +101,9 @@ try {
 
   Get-Item -LiteralPath $outputPath
 } finally {
+  # Chromium can return after writing the screenshot while its Crashpad child
+  # still has the profile open. Give that child a brief grace period before
+  # cleanup so the harness stays quiet and does not race its own temp removal.
+  Start-Sleep -Milliseconds 1000
   Remove-TempProfile -Path $profile
 }

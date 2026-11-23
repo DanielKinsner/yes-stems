@@ -76,6 +76,8 @@ const analysisFor = (fileName: string, overrides: Record<string, unknown> = {}) 
   durationSeconds: 3,
   peak: 0.8,
   waveformPeaks: [0.1, 0.8, 0.4],
+  separationAllowed: true,
+  separationAdvisory: null,
   ...overrides,
 });
 
@@ -510,6 +512,90 @@ describe("YES Stems app", () => {
     expect(screen.getByRole("button", { name: /Open logs folder/i })).toBeInTheDocument();
   });
 
+  it("closes settings with Escape and restores focus to the settings button", () => {
+    render(<App />);
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+
+    fireEvent.click(settingsButton);
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    expect(screen.getByRole("button", { name: "Close settings" })).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    expect(settingsButton).toHaveFocus();
+  });
+
+  it("shows a recoverable local runtime error and can switch to Classic DSP", async () => {
+    withTauri();
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "check_local_ml_runtime") {
+        return Promise.resolve({
+          available: false,
+          runner: null,
+          device: "cpu",
+          checked: ["bundled demucs.exe"],
+          detail: "The bundled local engine is missing.",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected command ${command}`));
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("alert", { name: "Local ML unavailable" })).toBeInTheDocument();
+    expect(screen.getByText("The bundled local engine is missing.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use Classic DSP" }));
+
+    expect(screen.getByRole("tab", { name: /Classic Vocal \+ Instrumental/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.queryByRole("alert", { name: "Local ML unavailable" })).not.toBeInTheDocument();
+  });
+
+  it("retries the local runtime probe", async () => {
+    withTauri();
+    let checks = 0;
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "check_local_ml_runtime") {
+        checks += 1;
+        return Promise.resolve(
+          checks === 1
+            ? { ...RUNTIME_READY, available: false, detail: "Runtime unavailable" }
+            : RUNTIME_READY,
+        );
+      }
+      return Promise.reject(new Error(`Unexpected command ${command}`));
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Retry local engine check" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alert", { name: "Local ML unavailable" })).not.toBeInTheDocument();
+    });
+    expect(checks).toBe(2);
+  });
+
+  it("surfaces the backend separation advisory and blocks over-limit tracks", async () => {
+    withTauri();
+    setupInvoke({
+      analysis: analysisFor("long.wav", {
+        durationSeconds: 900,
+        separationAllowed: false,
+        separationAdvisory: "This track is 15m 00s long, over the 12m 00s limit.",
+      }),
+    });
+    tauriMocks.open.mockResolvedValue("C:\\audio\\long.wav");
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Change File/i }));
+
+    expect(await screen.findByText(/over the 12m 00s limit/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Track is over the separation limit/i })).toBeDisabled();
+  });
+
   it("switches mode with the number-key shortcut", () => {
     render(<App />);
 
@@ -524,6 +610,35 @@ describe("YES Stems app", () => {
       "aria-selected",
       "true",
     );
+  });
+
+  it("supports arrow-key navigation across stem mode tabs", () => {
+    render(<App />);
+    const firstMode = screen.getByRole("tab", { name: /Local ML 6 Stems/i });
+    firstMode.focus();
+
+    fireEvent.keyDown(firstMode, { key: "ArrowDown" });
+
+    const secondMode = screen.getByRole("tab", { name: /Local ML 4 Stems/i });
+    expect(secondMode).toHaveAttribute("aria-selected", "true");
+    expect(secondMode).toHaveFocus();
+  });
+
+  it("supports keyboard seeking on the transport slider", async () => {
+    withTauri();
+    setupInvoke({ analysis: analysisFor("song.wav"), report: sixStemReport });
+    tauriMocks.open.mockResolvedValue("C:\\audio\\song.wav");
+    render(<App />);
+
+    await selectSourceAndArm();
+    fireEvent.click(screen.getByRole("button", { name: /Run Extraction/i }));
+    await screen.findByText("piano.wav");
+
+    const seek = screen.getByRole("slider", { name: "Seek" });
+    seek.focus();
+    fireEvent.keyDown(seek, { key: "ArrowRight" });
+
+    expect(seek).toHaveAttribute("aria-valuenow", "5");
   });
 
   it("dismisses the export toast with its close button", async () => {
