@@ -15,7 +15,7 @@ machine. There is no account, no telemetry, no analytics, and no cloud processin
 
 ## Network-call audit
 
-This claim is backed by an audit of the source, not just a promise. As of **2026-06-30**:
+This claim is backed by an audit of the source, not just a promise. As of **2026-08-25**:
 
 | Surface | Finding |
 |---|---|

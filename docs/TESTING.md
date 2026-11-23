@@ -16,10 +16,18 @@ This expands to:
 
 ```powershell
 npm test
+npm run test:packaging
 npm run build
 cargo fmt --check --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+The packaging-contract fixture proves that missing and hash-mismatched model
+files fail closed. Verify a locally staged standalone runtime directly with:
+
+```powershell
+npm run verify:demucs-runtime
 ```
 
 ## Packaging Lane
@@ -30,8 +38,9 @@ Run from the repo root:
 npm run build:windows
 ```
 
-This invokes `tauri build` and should produce local bundle artifacts under
-`src-tauri/target/release/bundle/`.
+This verifies the staged local-ML runtime, then invokes `tauri build` and should
+produce local bundle artifacts under `src-tauri/target/release/bundle/`. Use
+`npm run build:windows:classic` only for an intentional classic-DSP-only build.
 
 For a standalone Windows build that includes the local Demucs sidecar and model
 weights, run:
@@ -43,6 +52,14 @@ npm run build:windows:standalone
 This first stages `src-tauri/resources/demucs-runtime/` with a PyInstaller
 `demucs.exe` sidecar and the `htdemucs` / `htdemucs_6s` checkpoints, then runs
 the normal Tauri bundle lane.
+
+For a public candidate with an owner-provisioned Authenticode certificate, use:
+
+```powershell
+npm run build:windows:standalone:signed
+```
+
+See `docs/WINDOWS-SIGNING.md`. Unsigned builds are local evidence only.
 
 After installing the NSIS bundle, run:
 
@@ -69,7 +86,7 @@ In a second shell, capture the current desktop viewport:
 npm run screenshot:ui
 ```
 
-The capture script uses local Chrome or Edge at `1280x800` and updates
+The capture script uses local Chrome or Edge at `1920x1080` and updates
 `docs/screenshots/yes-stems-installed-app.png`.
 
 Verify the committed screenshot dimensions:

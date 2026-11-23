@@ -17,10 +17,13 @@ orchestration backend, a classic DSP engine, and a local ML runner boundary.
 - Advanced aggressiveness/artifact-reduction controls are enabled only for
   classic DSP modes. Local ML modes disable them because the Demucs boundary
   does not safely consume those product-level controls.
-- Stem cleanup controls are available across modes but default off because
-  cleanup is a local post-process after stem rendering, not an inference or
-  mask parameter.
-- The desktop workspace is optimized for `1280x800` with a `1120x720`
+- Stem cleanup controls are available across modes and default on at moderate
+  strength. Cleanup is a local post-process after stem rendering, not an
+  inference or mask parameter.
+- Source analysis returns the shared separation pre-flight advisory. Tracks over
+  seven minutes receive a heavy-memory warning; tracks over twelve minutes are
+  blocked before STFT or Demucs work begins.
+- The desktop workspace opens at `1920x1080` with a `1200x720`
   minimum window so the setup rail, analysis stage, processing console, and
   results rack remain visible together.
 
@@ -80,6 +83,10 @@ Verified runtime staging:
   `htdemucs_6s` weights into `torch-cache/hub/checkpoints`.
 - The Tauri bundle maps `src-tauri/resources/demucs-runtime/` to the installed
   resource directory as `demucs-runtime/`.
+- The runtime contract pins and verifies the full SHA-256 digest of both model
+  checkpoints. Release builds fail when the runner, manifest, or checkpoints
+  are missing; `YES_STEMS_ALLOW_CLASSIC_ONLY_BUNDLE=1` is the explicit escape
+  hatch for an intentional classic-only build.
 
 Packaging seam:
 

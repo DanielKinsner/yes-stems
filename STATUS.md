@@ -15,7 +15,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 | Version | `0.1.0` (pinned in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`) |
 | Platform target | Windows (Tauri 2 NSIS + MSI); macOS/Linux targets configured but not exercised |
 | Stack | React 19 + TypeScript + Vite (frontend) · Tauri 2 + Rust (shell + commands) · Symphonia / RustFFT / hound (DSP) · PyInstaller-bundled Demucs sidecar (local ML) |
-| Verification | GREEN — 19 vitest tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 34 Rust unit tests pass; UI screenshot is exactly 1920×1080 and matches the reference design (a small export-format selector is the one intentional addition) |
+| Verification | GREEN — 25 Vitest tests + packaging-contract tests + `tsc --noEmit` + `vite build` clean; `cargo fmt --check` + `cargo clippy -D warnings` + 41 Rust unit tests pass; current suite-branded UI screenshot is exactly 1920×1080 |
 | CI | GitHub Actions (`.github/workflows/ci.yml`) runs `verify:frontend` + `verify:rust` on push/PR (windows-latest) |
 
 ---
@@ -79,6 +79,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Three-pane workbench (left rack · center stage · right rack) wired to all four Tauri commands.
 - Source picking via `@tauri-apps/plugin-dialog` with audio filters (wav/flac/mp3/aif/aiff/m4a/ogg).
 - All four extraction modes selectable from both the header dropdown and the left-rack mode list; mode switch clears stale report and stops playback.
+- YES Audio family branding now shares YES Master's waveform wordmark, cobalt interaction palette, graphite surface hierarchy, compact section markers, and primary-action treatment; Stems keeps teal signal analysis, instrument colors, and numbered extraction stages.
 - Tuning surface: cleanup enable + strength slider (always), aggressiveness + artifact-reduction sliders (classic modes only).
 - Full extract request body wired to `invoke('extract_stems', { request: { inputPath, mode, tuning, cleanup } })` with end-to-end state for `isExtracting`, `progress`, `error`, and report.
 - `stems://progress` subscribed via `listen()` in a Tauri-gated `useEffect`; drives the READY/WORKING footer pill and ETA text.
@@ -124,7 +125,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Cleanup pass with DC removal, percentile-based quiet-bleed suppression (~30th percentile via every-16th-sample estimator), and 2–6 ms edge fades scaled by strength.
 - Export is conservative: sanitized ASCII folder name, parent-dir creation, same-file guard via `canonicalize`.
 - Per-run working folder under `app_data_dir/working-stems/` keeps each run isolated from user export targets.
-- 28 Rust unit tests across `separation.rs`, `stem_cleanup.rs`, `ml_engine.rs`, `audio_io.rs`, `commands.rs` — STFT roundtrip RMS < 0.005, mask differentiation under tuning, cleanup notes, ASCII-safe workspace, WAV spec invariants.
+- 41 Rust unit tests across `separation.rs`, `stem_cleanup.rs`, `ml_engine.rs`, `audio_io.rs`, `commands.rs`, `cancel.rs`, and `preflight.rs` — STFT roundtrip RMS < 0.005, duration guards, mask differentiation, cleanup notes, ASCII-safe workspace, export formats, cancellation, and WAV invariants.
 
 **Partial / demo-only**
 - `StemFile.bytes` is the on-disk file size captured at write time — purely a UI hint; can lie if the file is later replaced.
@@ -161,14 +162,14 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - `scripts/demucs-sidecar.py` is a thin entry point — there is no custom IPC protocol, the Rust side just shells out and reads the produced WAV files.
 - `local_demucs_candidates()` includes both Windows and POSIX paths, but only the **Windows** PyInstaller build script exists.
 - `demucs_device()` returns `"cpu"` unless `YES_STEMS_DEMUCS_DEVICE` is set — no CUDA/MPS autodetect; pinned CPU-only torch wheel.
-- `src-tauri/resources/demucs-runtime/` ships only `.gitkeep`; the real runtime + checkpoints are gitignored and produced on demand. A plain `tauri build` without first running `npm run build:demucs-sidecar` produces an installer with **no local ML at all**.
+- `src-tauri/resources/demucs-runtime/` ships only `.gitkeep`; the real runtime + checkpoints are gitignored and produced on demand. Release-profile builds fail closed when the runner, manifest, or checkpoints are absent. The Windows wrapper additionally verifies the manifest and full model hashes; its explicit classic-only lane replaces the resource map so ML files are excluded even when staged.
 - `--help` probe cold-starts the PyInstalled interpreter on every UI poll (no caching).
 
 **Gaps**
 - **No macOS or Linux sidecar build path.**
 - **No GPU runtime** in the shipped binary; no fallback if the user points it at `cuda` against CPU-only torch.
-- **No code-signing** for `demucs.exe` or its bundled DLLs — SmartScreen friction guaranteed.
-- No checksum verification of the downloaded `.th` checkpoints from `dl.fbaipublicfiles.com` (existence-only check); no mirror, no hash, no resume.
+- Authenticode hooks now cover `demucs.exe`, bundled DLL/PYD files, the app, and NSIS/MSI artifacts, but an owner-provisioned certificate is still required before they can run.
+- Full SHA-256 verification is enforced for both `.th` checkpoints; a configurable `YES_STEMS_MODEL_MIRROR_BASE_URL` fallback is supported. Resumable downloads remain TODO.
 - No installer-time integrity check that staged checkpoints actually load.
 - No size/perf budgeting — `--onedir` + torch + torchaudio + numpy + two ~80 MB `.th` files push the Windows installer to hundreds of MB.
 - No update path for bundled runtime; a torch CVE forces a full reinstall.
@@ -178,7 +179,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 ### 4.4 Build & release
 
 **Works**
-- Local Windows build path: `npm run build:windows[:standalone]` runs Vite + `tauri build`; standalone variant first invokes `build:demucs-sidecar` and produces both NSIS and MSI installers.
+- Local Windows build path: `npm run build:windows[:standalone]` verifies the runtime and runs Vite + `tauri build`; the standalone variant first invokes `build:demucs-sidecar` and produces both NSIS and MSI installers. `build:windows:classic` is the explicit no-ML lane.
 - `tauri.conf.json` bundles `resources/demucs-runtime` → `demucs-runtime`; backend wires `TORCH_HOME` to the staged cache.
 - Verify lanes in `package.json`: `verify:branch`, `verify:frontend`, `verify:rust`, `verify:fast`, `verify:release`, `verify:ui`, `verify:screenshot`.
 - Asset-protocol scope is restricted to working-stems directories under `$APPDATA`, `$APPLOCALDATA`, and `$TEMP/yes-stems/`.
@@ -186,27 +187,27 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - Icon set present (`icon.ico`, `icon.icns`, square logos, 32 / 128 / 128@2x PNGs).
 
 **Partial / demo-only**
-- `bundle.targets` is `"all"` rather than `["nsis", "msi"]` — no Windows-specific tuning.
-- CSP is `null` — acceptable for local-only but unhardened.
-- Version is duplicated and **manually pinned** in three files (no bump script).
+- `bundle.targets` is pinned to `["nsis", "msi"]`; NSIS installs per-user, downgrades are blocked, and WebView2 bootstrap behavior is explicit.
+- CSP is hardened to local IPC/assets with remote script, object, frame, and network access blocked.
+- Version remains duplicated across three files but is updated atomically by `scripts/version-bump.ps1`.
 - Demucs sidecar is bundled as a `resource`, not registered as a Tauri `externalBin` sidecar — bypasses Tauri's sidecar permission model.
 - `package-lock.json` is now committed (and no longer gitignored) for reproducible npm resolution.
 
 **Gaps**
 - **CI runs verify lanes** (`.github/workflows/ci.yml`); full installer build/release automation is still TODO.
-- **No code-signing** pipeline (no SignTool invocation, no PFX path, no `WindowsConfiguration.certificateThumbprint` / `signCommand` in `tauri.conf.json`).
+- Code-signing hooks and an ignored Tauri signing overlay are implemented; certificate purchase/import and clean-machine publisher verification remain owner gates.
 - **No Tauri updater plugin** or `plugins.updater` config — no auto-update channel.
-- No NSIS / WiX customization block — no `webviewInstallMode`, no per-user vs per-machine choice, no license page, no custom uninstall behavior.
+- NSIS install scope and WebView2 behavior are explicit; license-page and custom uninstall behavior remain TODO.
 - ~~No publisher / copyright / longDescription metadata~~ — **done** in `tauri.conf.json` bundle (NSIS/WiX install-page tuning still TODO).
 - ~~No `CHANGELOG.md`~~ — **done** (Keep-a-Changelog).
 - No SBOM or license/attribution artifacts.
-- No CI gate that fails a bundle when `src-tauri/resources/demucs-runtime/demucs.exe` is missing.
+- CI runs the synthetic runtime-contract tests. Release-profile builds fail when required runtime artifacts are missing; the Windows wrapper additionally rejects manifest errors and full model-hash mismatches.
 
 ### 4.5 Testing & verification
 
 **Works**
-- 12 Vitest cases in `src/App.test.tsx` covering: default render, six-stem expectations, Classic DSP layer file list, full `extract_stems` request body, source replacement clearing stale report, classic tuning + cleanup-strength passthrough, pointer-drag timeline math, stem audition via `convertFileSrc`, transport Play, export round-trip incl. `openPath`.
-- 28 Rust unit tests across `stem_cleanup`, `separation`, `ml_engine`, `audio_io`, `commands` — including STFT roundtrip RMS < 0.005, mask differentiation under tuning, bundled runner sets `TORCH_HOME`, PYTHONUTF8 enforcement, non-ASCII source workspace, stem shape mismatch validation, export sanitized folder, working-root isolation.
+- 25 Vitest cases in `src/App.test.tsx` cover the main workflow plus runtime recovery, pre-flight rejection copy, modal focus restoration, tab-arrow navigation, and keyboard seeking.
+- 41 Rust unit tests across `stem_cleanup`, `separation`, `ml_engine`, `audio_io`, `commands`, `cancel`, and `preflight` — including STFT roundtrip RMS < 0.005, duration boundaries, bundled runner setup, Unicode workspaces, export formats, cancellation, and working-root isolation.
 - `scripts/capture-ui-screenshot.ps1` regenerates `docs/screenshots/yes-stems-installed-app.png` via headless Chrome/Edge; `scripts/verify-ui-screenshot.ps1` asserts exact 1920×1080.
 - `scripts/assert-main-branch.ps1` blocks release flows from non-main branches.
 
@@ -240,24 +241,24 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 **Partial / demo-only**
 - Cleanup now defaults **on** (`App.tsx` initializes `cleanupEnabled = true` at 45% strength, matching the reference design); `docs/PRODUCT.md` step 4 was updated to agree. Tests assert `cleanup.enabled = true` on the default path.
-- `src-tauri/Cargo.toml` description still reads `"Local non-AI music stem extraction desktop app."` — contradicts the current ML-headlined positioning.
-- Trust-badge copy ("No uploads. No cloud. Ever.") is in the UI shell with no privacy policy, no documented network audit, and no Tauri CSP backing it (`csp: null`).
+- ~~`src-tauri/Cargo.toml` contradicted the ML-headlined positioning~~ — **done**: package metadata now says local Demucs ML + Rust DSP.
+- The trust-badge copy is backed by `PRIVACY.md`'s source/capability audit and a restrictive Tauri CSP; binary network-capture confirmation remains an owner release check.
 - `RESEARCH.md` still frames classic DSP as the default — one product iteration behind.
 - Internal Rust enum variants (`VocalInstrumental`, `FullBand`) differ from UI mode labels — readable for users, mixed internally.
-- `RELEASE.md` is Windows-only despite `bundle.targets = "all"`.
+- `RELEASE.md` is intentionally Windows-only and the active bundle targets are pinned to NSIS/MSI.
 
 **Gaps**
 - ~~No LICENSE file~~ — **done**: proprietary/commercial `LICENSE` + `EULA.md` (needs a lawyer's review before sale).
-- **No PRIVACY policy** substantiating the strong local-only claims the UI makes.
-- No TERMS/EULA.
+- ~~No privacy policy or network audit~~ — **done**: `PRIVACY.md` documents data handling, capabilities, and reproducible source checks.
+- ~~No EULA~~ — **done**: `EULA.md` exists as a template; owner/legal review is still required. A separate customer-facing terms document remains deferred.
 - No customer-facing website/store-listing copy, no marketing assets beyond the engineering screenshot.
 - No onboarding / first-run UX, permissions explainer, or in-app docs.
-- No model-provenance / NOTICE / third-party-attribution doc covering Demucs, PyTorch, torchaudio, soundfile, Symphonia, RustFFT, hound, Tauri, React, lucide-react.
+- ~~No model-provenance / third-party-attribution docs~~ — **done**: `NOTICE.md` covers the primary runtime/UI/DSP components and `docs/MODEL-LICENSING.md` records the unresolved weight-redistribution decision.
 - ~~No `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`~~ — **all added** (plus `NOTICE.md`, `PRIVACY.md`).
-- No documented network-call audit substantiating the no-uploads claim.
-- No user-friendly troubleshooting / FAQ for the common `MlEngineError::RuntimeUnavailable` path.
+- ~~No documented network-call audit~~ — **done** in `PRIVACY.md`; a shipped-binary capture remains owner evidence.
+- No broader troubleshooting / FAQ; the common runtime-unavailable path now has inline detail, retry, and Classic DSP recovery actions.
 - No supported-formats matrix, system-requirements, platform-coverage statement, or pricing/business-model doc.
-- No data-handling statement covering the working folder under `$APPDATA/working-stems/` (which currently has no cleanup path).
+- `PRIVACY.md` documents the app-data working folder, but automatic pruning/cleanup of old runs is still absent.
 
 ---
 
@@ -265,33 +266,33 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 | Command | What it runs | Status |
 |---|---|---|
-| `npm test` | Vitest (12 frontend cases) | PASS |
+| `npm test` | Vitest (25 frontend cases) | PASS |
 | `npm run build` | `tsc --noEmit && vite build` | PASS |
-| `npm run verify:frontend` | `npm test && vite build` | PASS |
-| `npm run verify:rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (24 cases) | PASS |
+| `npm run verify:frontend` | Vitest + packaging-contract tests + `tsc --noEmit` + Vite build | PASS |
+| `npm run verify:rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (41 cases) | PASS |
 | `npm run verify:fast` | frontend + rust lanes | PASS |
 | `npm run verify:screenshot` | asserts `docs/screenshots/yes-stems-installed-app.png` is 1920×1080 | PASS |
 | `npm run verify:ui` | branch + frontend + screenshot | PASS |
 | `npm run verify:release` | branch + fast + screenshot | PASS |
-| `npm run build:windows` | Tauri NSIS + MSI build (no bundled sidecar) | Manual, last known: PASS |
-| `npm run build:windows:standalone` | builds sidecar, then NSIS + MSI with bundled Demucs runtime | Manual, last known: PASS |
+| `npm run build:windows` | verifies staged runtime, then builds Tauri NSIS + MSI | PASS 2026-08-25 (unsigned local evidence) |
+| `npm run build:windows:standalone` | rebuilds sidecar, verifies hashes/probe, then bundles NSIS + MSI | PASS 2026-08-25 (unsigned local evidence) |
 | `scripts/smoke-installed-demucs.ps1` | post-install smoke against installed `demucs.exe` (both models, synthetic WAV) | Manual, last known: PASS |
 
 ---
 
 ## 6. Known risks & limitations
 
-- **Windows-only release lane.** macOS/Linux are configured in Tauri but have no sidecar build and no documented release path.
-- **No Authenticode signing yet.** SmartScreen and AV friction guaranteed on a clean Windows install; the bundled `demucs.exe` and its DLLs are also unsigned.
+- **Windows-only release lane.** Bundle targets are explicitly NSIS/MSI; macOS and Linux have no sidecar build or documented release path.
+- **No Authenticode certificate provisioned yet.** The signing pipeline is ready, but unsigned artifacts still have SmartScreen/AV friction.
 - **No auto-update.** Versions ship as frozen artifacts.
 - **CI covers verify only.** GitHub Actions runs `verify:frontend` + `verify:rust` on push/PR, but full installer builds (Python 3.12 + .venv-demucs + PyInstaller + WiX/NSIS) still run on a developer's Windows machine.
-- **Local ML requires the bundled runtime.** A plain `tauri build` (without first running `build:demucs-sidecar`) produces an installer with zero local-ML capability and only the UI surfaces a tooltip-and-button explaining how to fix it.
+- **Local ML requires the bundled runtime.** Release builds now fail closed if it is missing, and the UI provides a visible retry or Classic DSP recovery path if a runtime becomes unavailable after install.
 - **CPU-only inference.** No CUDA/MPS in the shipped binary; `htdemucs_6s` on a long stereo song is slow.
 - ~~No cancellation~~ — **done**: a Stop button (and Esc) aborts a run and kills the Demucs child mid-run.
-- **Whole-file in-memory DSP.** Realistic 6–10 minute stereo tracks risk OOM on 8 GB machines; tests only cover 0.5 s synthetic clips.
+- **Whole-file in-memory DSP.** Tracks over seven minutes receive a visible heavy-memory warning and tracks over twelve minutes are rejected; full streaming remains deferred.
 - **Export formats:** 16/24/32-float WAV + lossless FLAC supported; AIFF still a follow-up.
 - **`htdemucs_6s` guitar / piano heads are experimental** — labeled in UI and `PRODUCT.md`.
-- **Privacy claim is not substantiated** by a published policy or documented network audit.
+- **Privacy evidence is source-level.** `PRIVACY.md` documents the current network-call/capability audit, but a shipped binary/network-capture check remains an owner release-lane confirmation.
 - **Demucs model/runtime provenance** has an open commercial-licensing review — blocks paid distribution of the standalone installer.
 - **Licensed proprietary/commercial** (`LICENSE` + `EULA.md`); the EULA is a template pending legal review.
 - ~~**Spectrum / Loudness tabs are placeholder visuals**~~ — now backed by real DSP (averaged spectrum + short-term RMS).
@@ -308,16 +309,16 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [x] Persist mode, cleanup defaults, volume, last folder (`localStorage`, desktop-only guard). *(window size still TODO)*
 - [x] Add keyboard shortcuts: Space/Esc for transport, Ctrl+O to open file, 1–4 to switch modes. *(S/M on focused stem still TODO)*
 - [x] Auto-dismissing success toasts + dismiss (×) button on every toast. *(persistent error log panel still TODO)*
-- [ ] Inline runtime-missing panel with one-click installer guidance (not just a tooltip).
+- [x] Inline runtime-missing panel with Retry and a one-click switch to Classic DSP.
 - [x] Make scrubber knob draggable; honor timeline selection for "play selection".
 - [x] Implement Spectrum + Loudness tabs with real data (averaged magnitude spectrum + short-term RMS from `analyze_track`) — no more placeholder visuals.
 - [x] Drag-and-drop an audio file onto the window/source card (Tauri `onDragDropEvent`, desktop-only).
-- [ ] **Ship-blocker:** chunked / overlap-add streaming in `separation.rs` to bound RAM (or at minimum a length cap with a clear UI error).
+- [x] **Ship-blocker mitigation:** shared seven-minute warning / twelve-minute hard cap with visible UI advisory; chunked overlap-add remains a post-v1 optimization.
 
 ### Stage B — Local ML packaging *(make "it just works offline" true)*
 - [ ] Build a `build:macos:standalone` and `build:linux:standalone` sidecar lane (PyInstaller equivalents for `.app` / ELF).
-- [ ] Add SHA-256 checksum verification + mirror fallback to the model-weight downloader in `build-demucs-sidecar.ps1`.
-- [ ] Add a build-time gate that fails the bundle when `src-tauri/resources/demucs-runtime/demucs.exe` is missing.
+- [x] Add full SHA-256 verification + configurable mirror fallback to the model-weight downloader in `build-demucs-sidecar.ps1`.
+- [x] Add release-time gates that fail when the runner, manifest, checkpoints, or checkpoint hashes are invalid.
 - [ ] Ship CUDA (Windows/Linux) and Apple MPS (macOS) torch variants; add device autodetect with CPU fallback.
 - [ ] Cache `check_local_ml_runtime` probes so the UI doesn't cold-start Python on every poll.
 - [ ] Stream Demucs stdout/stderr while it runs; map progress to per-phase events.
@@ -326,9 +327,9 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 ### Stage C — Release engineering *(make a shippable installer)*
 - [x] Set up GitHub Actions CI (`.github/workflows/ci.yml`, windows-latest): runs `verify:frontend` + `verify:rust` on push/PR. *(installer-artifact archiving still TODO)*
-- [ ] **Ship-blocker:** provision an Authenticode certificate; sign the NSIS + MSI installers **and** the bundled `demucs.exe`.
-- [x] Add bundle metadata: publisher, copyright, category, short/long description (tauri.conf.json). *(NSIS/WiX license page, per-user install mode, `webviewInstallMode` still TODO)*
-- [ ] Pin `bundle.targets` to `["nsis", "msi"]` for Windows; create separate macOS DMG and Linux AppImage lanes.
+- [ ] **Ship-blocker:** provision an Authenticode certificate. Signing hooks now cover NSIS/MSI, the app, `demucs.exe`, DLLs, and PYDs; certificate/identity evidence remains owner-only.
+- [x] Add bundle metadata plus explicit NSIS per-user install mode, downgrade protection, and WebView2 bootstrap behavior.
+- [x] Pin `bundle.targets` to `["nsis", "msi"]` for Windows. Separate macOS DMG and Linux AppImage lanes remain TODO.
 - [ ] Add `tauri-plugin-updater`; sign updates with a published `pubkey`; host an update manifest.
 - [x] Add a single `version-bump` script (`scripts/version-bump.ps1`, `npm run version:bump`) that updates `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` together.
 - [x] Commit `package-lock.json` for reproducible npm resolution (and remove it from `.gitignore`).
@@ -338,14 +339,14 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 
 ### Stage D — Quality
 - [ ] Add an end-to-end Rust test that invokes the real bundled Demucs sidecar against a short committed WAV fixture and asserts stem finite-ness + sample-rate + frame count (gated by `cfg(feature = "e2e")`).
-- [ ] Add tests for `analyze_track`, the audio_io decode path (WAV/MP3/FLAC), and `stems://progress` event emission.
+- [ ] Extend existing `analyze_track`, WAV/FLAC decode, and progress-phase tests with an MP3 fixture and command-level `stems://progress` emission coverage.
 - [ ] Add Criterion benches under `src-tauri/benches/` for STFT throughput; track regressions.
 - [x] Add a re-entrancy guard / single-job lock on `extract_stems` (`ExtractionState.running`).
 - [x] Add a job id to `ProgressEvent` (monotonic per run).
 - [x] Add `tracing` with a rolling daily on-disk log under the OS app-log dir.
 - [x] Multi-format export: 16-bit + 32-bit float WAV + lossless FLAC (`write_wav_encoded` / `write_flac`), with TPDF dither on 16-bit. *(AIFF still a follow-up.)*
 - [ ] Add visual regression (Playwright + pixelmatch) replacing the dimension-only screenshot check.
-- [ ] WCAG 2.1 AA pass: keyboard reachability of timeline, focus rings on dark backgrounds, contrast on `--quiet` text.
+- [x] Address known WCAG 2.1 AA gaps: keyboard timeline and tab navigation, modal focus trap/restore, visible focus rings, `--quiet` contrast, reduced-motion and forced-colors handling. A real assistive-technology pass remains owner QA.
 
 ### Stage E — Launch
 - [x] **Ship-blocker:** add `LICENSE` — **proprietary/commercial** (© Daniel Kinsner, all rights reserved).
@@ -354,7 +355,7 @@ YES Stems is a 100% local, offline, privacy-first desktop app that extracts musi
 - [x] Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`; `NOTICE.md` for third-party attribution.
 - [ ] Write end-user docs: first-run onboarding, supported-formats matrix, system requirements, FAQ, troubleshooting (especially the `RuntimeUnavailable` path), pricing/business-model.
 - [ ] Build a marketing site / store listing with real screenshots and feature copy.
-- [ ] Write a `NOTICE` / third-party-attribution doc covering Demucs, PyTorch, torchaudio, soundfile, Symphonia, RustFFT, hound, Tauri, React, lucide-react.
+- [x] Write `NOTICE.md` / third-party-attribution coverage for Demucs, PyTorch, torchaudio, soundfile, Symphonia, RustFFT, hound, Tauri, React, and lucide-react; keep model-weight clearance explicitly separate.
 - [x] Reconcile `docs/PRODUCT.md` cleanup default with the shipped default (now on-by-default in both).
 - [ ] Run a closed beta on 20–30 mixed Windows machines; capture install/launch/extract telemetry-by-consent.
 - [ ] GA v1.0.0 — signed Windows installer + signed macOS DMG, published auto-update channel, public privacy + license + EULA.
@@ -380,13 +381,16 @@ npm run tauri dev
 # run the verification lanes
 npm test                # vitest
 npm run verify:rust     # fmt + clippy + cargo test
+npm run verify:demucs-runtime # staged runner + model hashes
 npm run verify:fast     # frontend + rust
 npm run verify:ui       # branch + frontend + screenshot
 npm run verify:release  # branch + fast + screenshot
 
 # build Windows installers (NSIS + MSI)
-npm run build:windows               # no bundled Demucs sidecar
+npm run build:windows               # verifies an already-staged Demucs runtime
+npm run build:windows:classic       # explicit classic-DSP-only installer
 npm run build:windows:standalone    # PyInstalls Demucs + bundles weights, then builds
+npm run build:windows:standalone:signed # owner certificate required
 
 # post-install smoke (run after installing the standalone NSIS)
 pwsh scripts/smoke-installed-demucs.ps1

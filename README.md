@@ -16,6 +16,7 @@ sending audio to a cloud service or frontier-model API.
 npm run verify:ui
 npm run verify:frontend
 npm run verify:rust
+npm run verify:demucs-runtime
 npm run build:windows
 ```
 

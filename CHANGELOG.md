@@ -33,12 +33,27 @@ All notable changes to YES Stems are documented in this file. The format is base
 - Bundle metadata (publisher, copyright, category, descriptions); GitHub Actions CI running the
   frontend + Rust verify lanes; a `version-bump` script; PRIVACY (with a network-call audit),
   NOTICE, CONTRIBUTING, SECURITY, and CODE_OF_CONDUCT docs.
+- A fail-closed standalone-runtime contract that verifies the Demucs runner, manifest, declared
+  checkpoints, and full SHA-256 model hashes before Windows packaging.
+- Windows NSIS + MSI build wrappers with Authenticode hooks for both the app installers and
+  bundled PE files, plus a genuinely ML-free classic-only bundle lane.
+- Visible Local ML recovery actions (retry or switch to Classic DSP) and shared long-track
+  pre-flight guidance before an extraction can allocate its working buffers.
+- Keyboard-complete mode tabs and transport seeking, trapped/restored Settings focus, stronger
+  low-emphasis contrast, reduced-motion handling, and forced-colors focus indicators.
+- Release decision records for Windows signing and the unresolved commercial model-weight
+  redistribution gate.
 
 ### Changed
 
 - The workbench now matches the reference design 1:1 and runs at 1920×1080, using a
   fill-scaling 1440×820 design canvas that adapts to any window size.
 - `Cargo.toml` package description updated to reflect the local ML + DSP positioning.
+- Windows WebView2 bootstrap behavior and current-user NSIS installation are now explicit, and
+  downgrade installation is disabled.
+- Suite branding now shares YES Master's cobalt interaction palette, graphite workstation
+  surfaces, compact section markers, and waveform wordmark while preserving YES Stems' teal
+  signal layer, numbered extraction flow, and instrument colors.
 
 ### Fixed
 
