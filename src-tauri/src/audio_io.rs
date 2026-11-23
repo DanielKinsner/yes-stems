@@ -87,16 +87,25 @@ impl AudioBuffer {
 
 pub fn analyze_track(path: &Path) -> Result<TrackAnalysis, AudioIoError> {
     let audio = decode_audio(path)?;
+    let duration_seconds = audio.duration_seconds();
+    let (separation_allowed, separation_advisory) =
+        match crate::preflight::preflight(duration_seconds) {
+            crate::preflight::PreflightVerdict::Ok => (true, None),
+            crate::preflight::PreflightVerdict::Warn(message) => (true, Some(message)),
+            crate::preflight::PreflightVerdict::Reject(message) => (false, Some(message)),
+        };
     Ok(TrackAnalysis {
         file_name: file_name(path),
         sample_rate: audio.sample_rate,
         channels: audio.channels,
         frames: audio.frames(),
-        duration_seconds: audio.duration_seconds(),
+        duration_seconds,
         peak: audio.peak(),
         waveform_peaks: waveform_peaks(&audio, 96),
         spectrum: average_spectrum(&audio, 64),
         loudness: short_term_loudness(&audio, 96),
+        separation_allowed,
+        separation_advisory,
     })
 }
 

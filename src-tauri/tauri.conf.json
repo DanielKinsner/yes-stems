@@ -39,7 +39,17 @@
     "homepage": "https://github.com/DanielKinsner/yes-stems",
     "shortDescription": "Local, offline music stem separation.",
     "longDescription": "YES Stems extracts musical stems (vocals, drums, bass, and more) from any audio file entirely on your own machine, using local Demucs ML models or a built-in Rust DSP engine. No upload, no cloud, no account — your audio never leaves your computer.",
-    "targets": "all",
+    "targets": ["nsis", "msi"],
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "resources": {
       "resources/demucs-runtime": "demucs-runtime"
     },

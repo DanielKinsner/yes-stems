@@ -120,6 +120,10 @@ pub struct TrackAnalysis {
     pub spectrum: Vec<f32>,
     /// Short-term RMS loudness curve (0..1) for the Loudness tab.
     pub loudness: Vec<f32>,
+    /// False when the shared pre-flight guard will reject separation for this duration.
+    pub separation_allowed: bool,
+    /// User-facing warning or rejection detail from the shared separation pre-flight guard.
+    pub separation_advisory: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

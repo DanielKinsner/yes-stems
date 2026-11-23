@@ -793,6 +793,8 @@ mod tests {
             waveform_peaks: vec![0.5],
             spectrum: vec![0.5],
             loudness: vec![0.5],
+            separation_allowed: true,
+            separation_advisory: None,
         };
         let audio = audio_io::AudioBuffer {
             sample_rate: 48_000,

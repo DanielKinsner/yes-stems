@@ -2,6 +2,7 @@ param(
   [string]$Python = "python",
   [string]$Venv = ".venv-demucs",
   [string]$ResourceDir = "src-tauri/resources/demucs-runtime",
+  [string]$ModelMirrorBaseUrl = $env:YES_STEMS_MODEL_MIRROR_BASE_URL,
   [switch]$SkipModelDownload
 )
 
@@ -15,13 +16,25 @@ $ResourcePath = Join-Path -Path $RepoRoot -ChildPath $ResourceDir
 $SourceEntry = Join-Path -Path $RepoRoot -ChildPath "scripts/demucs-sidecar.py"
 $SetupScript = Join-Path -Path $RepoRoot -ChildPath "scripts/setup-demucs.ps1"
 
+. (Join-Path -Path $PSScriptRoot -ChildPath "demucs-runtime-contract.ps1")
+
 function Resolve-RepoChild {
-  param([string]$Path)
+  param(
+    [string]$Path,
+    [string]$ExpectedParent = $RepoRoot
+  )
 
   $fullPath = [System.IO.Path]::GetFullPath($Path)
   $repoPath = [System.IO.Path]::GetFullPath($RepoRoot)
-  if (-not $fullPath.StartsWith($repoPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+  $repoPrefix = $repoPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $fullPath.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to write outside repo: $fullPath"
+  }
+
+  $parentPath = [System.IO.Path]::GetFullPath($ExpectedParent)
+  $parentPrefix = $parentPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $fullPath.StartsWith($parentPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to write outside expected parent ${parentPath}: $fullPath"
   }
   return $fullPath
 }
@@ -80,7 +93,8 @@ try {
     throw "PyInstaller did not produce $builtExe"
   }
 
-  $safeResourcePath = Resolve-RepoChild $ResourcePath
+  $resourcesRoot = Join-Path -Path $RepoRoot -ChildPath "src-tauri/resources"
+  $safeResourcePath = Resolve-RepoChild -Path $ResourcePath -ExpectedParent $resourcesRoot
   New-Item -ItemType Directory -Force -Path $safeResourcePath | Out-Null
   Get-ChildItem -LiteralPath $safeResourcePath -Force |
     Where-Object { $_.Name -ne ".gitkeep" } |
@@ -91,31 +105,61 @@ try {
   $checkpointTarget = Join-Path -Path $safeResourcePath -ChildPath "torch-cache/hub/checkpoints"
   New-Item -ItemType Directory -Force -Path $checkpointTarget | Out-Null
 
-  $models = @(
-    @{
-      Name = "955717e8-8726e21a.th"
-      Url = "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th"
-    },
-    @{
-      Name = "5c90dfd2-34c22ccb.th"
-      Url = "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/5c90dfd2-34c22ccb.th"
-    }
-  )
+  $models = Get-YesStemsDemucsModels
 
   foreach ($model in $models) {
     $target = Join-Path -Path $checkpointTarget -ChildPath $model.Name
     if (-not (Test-Path -LiteralPath $target)) {
       $cached = Join-Path -Path $env:USERPROFILE -ChildPath ".cache/torch/hub/checkpoints/$($model.Name)"
-      if (Test-Path -LiteralPath $cached) {
+      if (Test-YesStemsFileSha256 -Path $cached -ExpectedSha256 $model.Sha256) {
         Copy-Item -LiteralPath $cached -Destination $target -Force
       }
       elseif ($SkipModelDownload) {
         throw "Missing model weight $($model.Name); rerun without -SkipModelDownload to stage an offline bundle."
       }
       else {
-        Invoke-WebRequest -Uri $model.Url -OutFile $target
+        if (Test-Path -LiteralPath $cached) {
+          Write-Warning "Ignoring cached model $cached because its SHA-256 does not match the release contract."
+        }
+
+        $downloadUrls = @($model.Url)
+        if (-not [string]::IsNullOrWhiteSpace($ModelMirrorBaseUrl)) {
+          $downloadUrls += "$($ModelMirrorBaseUrl.TrimEnd('/'))/$($model.Name)"
+        }
+
+        $downloaded = $false
+        $downloadPath = "$target.download"
+        foreach ($downloadUrl in $downloadUrls) {
+          try {
+            if (Test-Path -LiteralPath $downloadPath) {
+              Remove-Item -LiteralPath $downloadPath -Force
+            }
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath
+            Assert-YesStemsFileSha256 -Path $downloadPath -ExpectedSha256 $model.Sha256 -Label "downloaded model $($model.Name)"
+            Move-Item -LiteralPath $downloadPath -Destination $target -Force
+            $downloaded = $true
+            break
+          }
+          catch {
+            Write-Warning "Model download failed from ${downloadUrl}: $($_.Exception.Message)"
+            if (Test-Path -LiteralPath $downloadPath) {
+              Remove-Item -LiteralPath $downloadPath -Force
+            }
+          }
+        }
+
+        if (-not $downloaded) {
+          throw "Could not download a verified copy of model weight $($model.Name)."
+        }
       }
     }
+
+    Assert-YesStemsFileSha256 -Path $target -ExpectedSha256 $model.Sha256 -Label "staged model $($model.Name)"
+  }
+
+  $modelHashes = [ordered]@{}
+  foreach ($model in $models) {
+    $modelHashes[$model.Name] = $model.Sha256
   }
 
   $manifest = [ordered]@{
@@ -125,10 +169,11 @@ try {
     torch = "2.5.1"
     torchaudio = "2.5.1"
     models = @($models | ForEach-Object { $_.Name })
+    modelSha256 = $modelHashes
   }
   $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path -Path $safeResourcePath -ChildPath "manifest.json") -Encoding UTF8
 
-  & (Join-Path -Path $safeResourcePath -ChildPath "demucs.exe") --help *> $null
+  Assert-YesStemsDemucsRuntime -ResourcePath $safeResourcePath -Models $models -ProbeRunner | Out-Null
   Write-Host "Standalone Demucs runtime staged at $safeResourcePath"
 }
 finally {
